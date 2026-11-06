@@ -15,11 +15,14 @@ import 'package:interstellar/src/widgets/paging.dart';
 import 'package:interstellar/src/widgets/selection_menu.dart';
 import 'package:interstellar/src/widgets/wrapper.dart';
 import 'package:material_symbols_icons/symbols.dart';
+import 'package:interstellar/src/widgets/account_switcher.dart';
 import 'package:provider/provider.dart';
 
 @RoutePage()
 class ExploreTab extends ExploreScreen {
-  const ExploreTab({super.key, super.focusNode});
+  // The tab shows which account it is exploring as, with a way to change it.
+  const ExploreTab({super.key, super.focusNode})
+    : super(accountsAction: const AccountSwitcher());
 }
 
 @RoutePage()
@@ -32,6 +35,7 @@ class ExploreScreen extends StatefulWidget {
     this.onTap,
     this.selected,
     this.title,
+    this.accountsAction,
     super.key,
   });
 
@@ -42,6 +46,10 @@ class ExploreScreen extends StatefulWidget {
   final void Function(bool, dynamic)? onTap;
   final Set<String>? selected;
   final String? title;
+
+  /// Shown as the last top-bar action (the Explore tab puts the account
+  /// switcher here).
+  final Widget? accountsAction;
 
   @override
   State<ExploreScreen> createState() => _ExploreScreenState();
@@ -179,6 +187,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
                       : '${l(context).explore} ${ac.instanceHost}',
               },
         ),
+        actions: [if (widget.accountsAction != null) widget.accountsAction!],
       ),
       body: AdvancedPagedScrollView(
         controller: _pagingController,

@@ -43,6 +43,7 @@ class APIThreads {
     FeedSort? sort,
     bool combined = false,
     bool includeBoosts = false,
+    bool? showRead,
   }) async {
     switch (client.software) {
       case ServerSoftware.mastodon:
@@ -111,28 +112,33 @@ class APIThreads {
         }
 
         const path = '/post/list';
-        final query = {'page_cursor': page, 'sort': lemmyFeedSortMap[sort]}
-          ..addAll(switch (source) {
-            FeedSource.all => {'type_': 'All'},
-            FeedSource.local => {'type_': 'Local'},
-            FeedSource.subscribed => {'type_': 'Subscribed'},
-            FeedSource.moderated => {'type_': 'ModeratorView'},
-            FeedSource.favorited => {'liked_only': 'true'},
-            FeedSource.community => {'community_id': sourceId!.toString()},
-            FeedSource.user => throw UnreachableError(),
-            FeedSource.domain => throw Exception(
-              'Domain source not allowed for lemmy',
-            ),
-            FeedSource.feed => throw Exception(
-              'Feeds source not allowed for lemmy',
-            ),
-            FeedSource.topic => throw Exception(
-              'Topics source not allowed for lemmy',
-            ),
-            FeedSource.tag => throw Exception(
-              'Tags source not allowed for lemmy',
-            ),
-          });
+        final query =
+            {
+              'page_cursor': page,
+              'sort': lemmyFeedSortMap[sort],
+              // Lemmy otherwise applies the account's own server-side setting.
+              'show_read': showRead?.toString(),
+            }..addAll(switch (source) {
+              FeedSource.all => {'type_': 'All'},
+              FeedSource.local => {'type_': 'Local'},
+              FeedSource.subscribed => {'type_': 'Subscribed'},
+              FeedSource.moderated => {'type_': 'ModeratorView'},
+              FeedSource.favorited => {'liked_only': 'true'},
+              FeedSource.community => {'community_id': sourceId!.toString()},
+              FeedSource.user => throw UnreachableError(),
+              FeedSource.domain => throw Exception(
+                'Domain source not allowed for lemmy',
+              ),
+              FeedSource.feed => throw Exception(
+                'Feeds source not allowed for lemmy',
+              ),
+              FeedSource.topic => throw Exception(
+                'Topics source not allowed for lemmy',
+              ),
+              FeedSource.tag => throw Exception(
+                'Tags source not allowed for lemmy',
+              ),
+            });
 
         final response = await client.get(path, queryParams: query);
 

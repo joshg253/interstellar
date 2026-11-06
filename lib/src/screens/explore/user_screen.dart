@@ -44,12 +44,17 @@ class UserScreen extends StatefulWidget {
     super.key,
     this.initData,
     this.onUpdate,
+    this.accountsAction,
   });
 
   final String username;
   final int? userId;
   final DetailedUserModel? initData;
   final void Function(DetailedUserModel)? onUpdate;
+
+  /// Shown as the last top-bar action (the Account tab puts the account
+  /// switcher here).
+  final Widget? accountsAction;
 
   @override
   State<UserScreen> createState() => _UserScreenState();
@@ -166,6 +171,7 @@ class _UserScreenState extends State<UserScreen> {
               },
             ),
           ),
+          if (widget.accountsAction != null) widget.accountsAction!,
         ],
       ),
       body: DefaultTabController(
