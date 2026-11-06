@@ -25,6 +25,8 @@ class APINotifications {
     NotificationsFilter? filter,
   }) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path =
             '/notifications/${filter == NotificationsFilter.new_ ? 'new' : (filter?.name ?? 'all')}';
@@ -86,6 +88,8 @@ class APINotifications {
 
   Future<NotificationModel> get(int id) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/notification/$id';
 
@@ -103,6 +107,8 @@ class APINotifications {
 
   Future<int> getCount() async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         const path = '/notifications/count';
 
@@ -130,6 +136,8 @@ class APINotifications {
 
   Future<void> putReadAll() async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         const path = '/notifications/read';
 
@@ -159,6 +167,8 @@ class APINotifications {
     NotificationType notificationType, // Only needed for Lemmy
   ) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path =
             '/notifications/$notificationId/${readState ? 'read' : 'unread'}';
@@ -222,6 +232,8 @@ class APINotifications {
     required String contentPublicKey,
   }) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         const path = '/notification/push';
 
@@ -246,6 +258,8 @@ class APINotifications {
 
   Future<void> pushDelete() async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         const path = '/notification/push';
 
@@ -267,6 +281,8 @@ class APINotifications {
     required NotificationControlStatus status,
   }) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path =
             '/notification/update/${targetType.name}/$targetId/${status.toJson()}';

@@ -18,6 +18,8 @@ class APICommunityModeration {
     ReportStatus? status,
   }) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/moderate/magazine/$communityId/reports';
         final query = {'p': page, 'status': status?.name};
@@ -68,6 +70,8 @@ class APICommunityModeration {
     int postId,
   ) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/moderate/magazine/$communityId/reports/$reportId/accept';
 
@@ -120,6 +124,8 @@ class APICommunityModeration {
     int postId,
   ) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/moderate/magazine/$communityId/reports/$reportId/reject';
 
@@ -171,6 +177,8 @@ class APICommunityModeration {
     String? page,
   }) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/moderate/magazine/$communityId/bans';
         final query = {'p': page};
@@ -200,6 +208,8 @@ class APICommunityModeration {
     DateTime? expiredAt,
   }) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/moderate/magazine/$communityId/ban/$userId';
 
@@ -243,6 +253,8 @@ class APICommunityModeration {
 
   Future<CommunityBanModel> removeBan(int communityId, int userId) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/moderate/magazine/$communityId/ban/$userId';
 
@@ -283,6 +295,8 @@ class APICommunityModeration {
     required bool isPostingRestrictedToMods,
   }) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         const path = '/moderate/magazine/new';
 
@@ -343,6 +357,8 @@ class APICommunityModeration {
     required bool isPostingRestrictedToMods,
   }) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/moderate/magazine/$communityId';
 
@@ -398,6 +414,8 @@ class APICommunityModeration {
     bool state,
   ) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/moderate/magazine/$communityId/mod/$userId';
 
@@ -445,6 +463,8 @@ class APICommunityModeration {
 
   Future<void> removeIcon(int communityId) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/moderate/magazine/$communityId/icon';
 
@@ -469,6 +489,8 @@ class APICommunityModeration {
 
   Future<void> delete(int communityId) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/moderate/magazine/$communityId';
 

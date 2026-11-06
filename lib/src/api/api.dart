@@ -52,16 +52,31 @@ class API {
   final APIImages images;
 }
 
+/// nodeinfo software names of servers offering the Mastodon client API.
+const _mastodonCompatible = {
+  'mastodon',
+  'hometown',
+  'glitch',
+  'catodon',
+  'iceshrimp',
+  'sharkey',
+  'pleroma',
+  'akkoma',
+};
+
 Future<ServerSoftware?> getServerSoftware(String server) async {
   final response = await appHttpClient.get(
     Uri.https(server, '/nodeinfo/2.0.json'),
   );
 
   try {
-    return ServerSoftware.values.byName(
-      ((response.bodyJson['software']! as JsonMap)['name']! as String)
-          .toLowerCase(),
-    );
+    final name =
+        ((response.bodyJson['software']! as JsonMap)['name']! as String)
+            .toLowerCase();
+    // Servers that speak the Mastodon client API share one adapter.
+    return _mastodonCompatible.contains(name)
+        ? ServerSoftware.mastodon
+        : ServerSoftware.values.byName(name);
   } catch (_) {
     return null;
   }

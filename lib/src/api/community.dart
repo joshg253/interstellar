@@ -31,12 +31,18 @@ enum APIExploreSort {
 
   static List<APIExploreSort> valuesBySoftware(ServerSoftware software) =>
       switch (software) {
+        ServerSoftware.mastodon => throw UnsupportedError(
+          'Mastodon: not supported here',
+        ),
         ServerSoftware.mbin => [hot, active, newest],
         ServerSoftware.lemmy => values,
         ServerSoftware.piefed => [hot, topAll, newest, active],
       };
 
   String nameBySoftware(ServerSoftware software) => switch (software) {
+    ServerSoftware.mastodon => throw UnsupportedError(
+      'Mastodon: not supported here',
+    ),
     ServerSoftware.mbin => switch (this) {
       APIExploreSort.active => 'active',
       APIExploreSort.hot => 'hot',
@@ -86,6 +92,8 @@ class APICommunity {
     String? search,
   }) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path =
             (filter == null ||
@@ -250,6 +258,8 @@ class APICommunity {
 
   Future<DetailedCommunityModel> get(int communityId) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/magazine/$communityId';
 
@@ -277,6 +287,8 @@ class APICommunity {
 
   Future<DetailedCommunityModel> getByName(String communityName) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/magazine/name/$communityName';
 
@@ -304,6 +316,8 @@ class APICommunity {
 
   Future<DetailedCommunityModel> subscribe(int communityId, bool state) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path =
             '/magazine/$communityId/${state ? 'subscribe' : 'unsubscribe'}';
@@ -338,6 +352,8 @@ class APICommunity {
 
   Future<DetailedCommunityModel> block(int communityId, bool state) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/magazine/$communityId/${state ? 'block' : 'unblock'}';
 

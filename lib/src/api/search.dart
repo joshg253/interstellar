@@ -16,6 +16,8 @@ class APISearch {
     int? userId,
   }) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         const path = '/search';
 

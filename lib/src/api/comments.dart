@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:interstellar/src/api/client.dart';
+import 'package:interstellar/src/api/mastodon.dart';
 import 'package:interstellar/src/controller/controller.dart';
 import 'package:interstellar/src/controller/server.dart';
 import 'package:interstellar/src/models/comment.dart';
@@ -77,6 +78,8 @@ class APIComments {
     CommentSort? sort,
   }) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        return MastodonAPI(client).comments(postId);
       case ServerSoftware.mbin:
         final path = '/${_postTypeMbin[postType]}/$postId/comments';
         final query = {'p': page, 'sortBy': sort?.name};
@@ -126,6 +129,8 @@ class APIComments {
     CommentSort? sort,
   }) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/users/$userId/${_postTypeMbinComment[postType]}';
         final query = {'p': page, 'sort': sort?.name};
@@ -175,6 +180,8 @@ class APIComments {
 
   Future<CommentModel> get(PostType postType, int commentId) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/${_postTypeMbinComment[postType]}/$commentId';
 
@@ -219,6 +226,8 @@ class APIComments {
     String? emoji,
   }) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = choice == 1
             ? '/${_postTypeMbinComment[postType]}/$commentId/favourite'
@@ -258,6 +267,8 @@ class APIComments {
 
   Future<CommentModel> boost(PostType postType, int commentId) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/${_postTypeMbinComment[postType]}/$commentId/vote/1';
 
@@ -284,6 +295,8 @@ class APIComments {
     bool isAdult = false,
   }) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         if (image == null) {
           final path =
@@ -357,6 +370,8 @@ class APIComments {
     String body,
   ) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/${_postTypeMbinComment[postType]}/$commentId';
 
@@ -394,6 +409,8 @@ class APIComments {
 
   Future<void> delete(PostType postType, int commentId) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/${_postTypeMbinComment[postType]}/$commentId';
 
@@ -419,6 +436,8 @@ class APIComments {
 
   Future<void> report(PostType postType, int commentId, String reason) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/${_postTypeMbinComment[postType]}/$commentId/report';
 
