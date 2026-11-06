@@ -29,8 +29,14 @@ void main() {
   });
 
   test('mentions still work at the start and after punctuation', () {
-    expect(render('!fallout@lemmy.world is great'), contains('<mention>'));
-    expect(render('Hello, !fallout@lemmy.world'), contains('<mention>'));
+    expect(
+      render('!fallout@lemmy.world is great'),
+      contains('<mention>!fallout@lemmy.world</mention>'),
+    );
+    expect(
+      render('Hello, !fallout@lemmy.world'),
+      contains('<mention>!fallout@lemmy.world</mention>'),
+    );
   });
 }
 
