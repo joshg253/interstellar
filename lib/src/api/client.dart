@@ -155,6 +155,8 @@ class ServerClient {
       List<dynamic> allLanguages;
 
       switch (software) {
+        case ServerSoftware.mastodon:
+          throw UnsupportedError('Mastodon: not supported here');
         case ServerSoftware.mbin:
           throw Exception('Tried to get lang id with Mbin');
 

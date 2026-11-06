@@ -60,6 +60,9 @@ class _NotificationItemState extends State<NotificationItem> {
     final software = context.watch<AppController>().serverSoftware;
 
     final bannedCommunity = switch (software) {
+      ServerSoftware.mastodon => throw UnsupportedError(
+        'Mastodon: not supported here',
+      ),
       ServerSoftware.mbin =>
         widget.item.type == NotificationType.ban &&
                 widget.item.subject['magazine'] != null
@@ -72,6 +75,9 @@ class _NotificationItemState extends State<NotificationItem> {
     };
 
     final body = switch (software) {
+      ServerSoftware.mastodon => throw UnsupportedError(
+        'Mastodon: not supported here',
+      ),
       ServerSoftware.mbin =>
         (widget.item.subject['body'] ?? widget.item.subject['reason'] ?? '')
             as String,
@@ -88,6 +94,9 @@ class _NotificationItemState extends State<NotificationItem> {
     };
 
     final onTap = switch (software) {
+      ServerSoftware.mastodon => throw UnsupportedError(
+        'Mastodon: not supported here',
+      ),
       ServerSoftware.mbin =>
         widget.item.subject.containsKey('threadId')
             ? () => context.router.push(

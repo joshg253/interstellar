@@ -2,6 +2,7 @@ import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:interstellar/src/api/client.dart';
+import 'package:interstellar/src/api/mastodon.dart';
 import 'package:interstellar/src/api/community.dart';
 import 'package:interstellar/src/controller/server.dart';
 import 'package:interstellar/src/models/user.dart';
@@ -23,6 +24,8 @@ class APIUsers {
     String? search,
   }) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path =
             '/users${switch (filter) {
@@ -95,6 +98,8 @@ class APIUsers {
 
   Future<DetailedUserModel> get(int userId) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/users/$userId';
 
@@ -126,6 +131,8 @@ class APIUsers {
 
   Future<DetailedUserModel> getByName(String username) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path =
             '/users/name/${username.contains('@') ? '@$username' : username}';
@@ -158,6 +165,8 @@ class APIUsers {
 
   Future<DetailedUserModel> getMe() async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        return MastodonAPI(client).me();
       case ServerSoftware.mbin:
         const path = '/users/me';
 
@@ -189,6 +198,8 @@ class APIUsers {
 
   Future<DetailedUserModel> follow(int userId, bool state) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/users/$userId/${state ? 'follow' : 'unfollow'}';
 
@@ -206,6 +217,8 @@ class APIUsers {
 
   Future<DetailedUserModel?> updateProfile(String about) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         const path = '/users/profile';
 
@@ -231,6 +244,8 @@ class APIUsers {
 
   Future<DetailedUserModel> putBlock(int userId, bool state) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/users/$userId/${state ? 'block' : 'unblock'}';
 
@@ -267,6 +282,8 @@ class APIUsers {
 
   Future<DetailedUserModel?> updateAvatar(XFile image) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         const path = '/users/avatar';
 
@@ -319,6 +336,8 @@ class APIUsers {
 
   Future<DetailedUserModel?> deleteAvatar() async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         const path = '/users/avatar';
         final response = await client.delete(path);
@@ -343,6 +362,8 @@ class APIUsers {
 
   Future<DetailedUserModel?> updateCover(XFile image) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         const path = '/users/cover';
 
@@ -395,6 +416,8 @@ class APIUsers {
 
   Future<DetailedUserModel?> deleteCover() async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         const path = '/users/cover';
         final response = await client.delete(path);
@@ -422,6 +445,8 @@ class APIUsers {
     String? page,
   }) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/users/$userId/followers';
         final query = {'p': page};
@@ -443,6 +468,8 @@ class APIUsers {
     String? page,
   }) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/users/$userId/followed';
         final query = {'p': page};
@@ -461,6 +488,8 @@ class APIUsers {
 
   Future<UserSettings> getUserSettings() async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         const path = '/users/settings';
         final response = await client.get(path);
@@ -493,6 +522,8 @@ class APIUsers {
 
   Future<UserSettings> saveUserSettings(UserSettings settings) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         const path = '/users/settings';
         final response = await client.put(

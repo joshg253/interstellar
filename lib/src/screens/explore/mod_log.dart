@@ -73,6 +73,9 @@ class _ModLogScreenState extends State<ModLogScreen> {
       );
 
       final newItems = switch (ac.serverSoftware) {
+        ServerSoftware.mastodon => throw UnsupportedError(
+          'Mastodon: not supported here',
+        ),
         ServerSoftware.mbin => newPage.items,
         ServerSoftware.lemmy =>
           _filter != ModLogType.all

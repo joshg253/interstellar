@@ -13,6 +13,8 @@ class APIFeed {
     bool topics = false,
   }) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         throw Exception('Feeds not available on mbin');
 
@@ -36,6 +38,8 @@ class APIFeed {
 
   Future<FeedModel> get(int feedId) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         throw Exception('Feeds not available on mbin');
 
@@ -54,6 +58,8 @@ class APIFeed {
 
   Future<FeedModel> getByName(String feedName) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         throw Exception('Feeds not available on mbin');
 
@@ -72,6 +78,8 @@ class APIFeed {
 
   Future<FeedModel> subscribe(int feedId, bool state) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         throw Exception('Feeds not available on mbin');
 
@@ -105,6 +113,8 @@ class APIFeed {
     List<String>? communities,
   }) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         throw Exception('Feeds not available on mbin');
 
@@ -150,6 +160,8 @@ class APIFeed {
     List<String>? communities,
   }) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         throw Exception('Feeds not available on mbin');
 
@@ -183,6 +195,8 @@ class APIFeed {
 
   Future<void> delete({required int feedId}) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         throw Exception('Feeds not available on mbin');
 

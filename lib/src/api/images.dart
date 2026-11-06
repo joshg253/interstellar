@@ -29,6 +29,8 @@ class APIImages {
       switch (store) {
         case ImageStore.platform:
           switch (client.software) {
+            case ServerSoftware.mastodon:
+              throw UnsupportedError('Mastodon: not supported here');
             case ServerSoftware.mbin:
               throw UnimplementedError(
                 'Direct image upload not available for Mbin',

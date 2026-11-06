@@ -236,6 +236,14 @@ class AppController with ChangeNotifier {
       ),
     );
 
+    // A stored selection that is no longer selectable (Mastodon) is dropped.
+    if (_selectedAccount.isNotEmpty && !_isSelectable(_selectedAccount)) {
+      _selectedAccount = _accounts.keys.firstWhere(
+        _isSelectable,
+        orElse: () => '',
+      );
+    }
+
     if (_servers.isEmpty || _accounts.isEmpty || _selectedAccount.isEmpty) {
       await saveServer(defaultSoftware, defaultInstance);
       await setAccount(
@@ -459,6 +467,8 @@ class AppController with ChangeNotifier {
     BuildContext? context,
   }) async {
     switch (software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.lemmy:
       case ServerSoftware.piefed:
         final loginPath = '${software.apiPathPrefix}/user/login';
@@ -470,6 +480,9 @@ class AppController with ChangeNotifier {
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({
             switch (software) {
+              ServerSoftware.mastodon => throw UnsupportedError(
+                'Mastodon: not supported here',
+              ),
               ServerSoftware.lemmy => 'username_or_email',
               ServerSoftware.piefed => 'username',
               ServerSoftware.mbin => throw UnreachableError(),
@@ -613,7 +626,8 @@ class AppController with ChangeNotifier {
     _rebuildProfile();
 
     _accounts.remove(key);
-    _selectedAccount = _accounts.keys.firstOrNull ?? defaultAccount;
+    _selectedAccount =
+        _accounts.keys.where(_isSelectable).firstOrNull ?? defaultAccount;
 
     // If there are no accounts left from a server, then remove the server's data
     final keyAccountServer = key.split('@').last;
@@ -657,8 +671,12 @@ class AppController with ChangeNotifier {
     notifyListeners();
   }
 
+  /// Some types only work in the cross-account views, not as the selected account.
+  bool _isSelectable(String account) =>
+      _servers[account.split('@').last]?.software.canBeAppAccount ?? true;
+
   Future<void> switchAccounts(String? newAccount, {bool force = false}) async {
-    if (newAccount == null) return;
+    if (newAccount == null || !_isSelectable(newAccount)) return;
     if (newAccount == _selectedAccount && !force) return;
 
     logger.i('Switch accounts $_selectedAccount -> $newAccount');
@@ -688,6 +706,13 @@ class AppController with ChangeNotifier {
     var httpClient = appHttpClient;
 
     switch (software) {
+      case ServerSoftware.mastodon:
+        // Guests use the plain client; an access token (stored in `jwt`) is
+        // sent as a bearer token.
+        final token = _accounts[account]?.jwt;
+        if (token != null) {
+          httpClient = JwtHttpClient(token, appHttpClient);
+        }
       case ServerSoftware.mbin:
         final credentials = _accounts[account]?.oauth;
         if (credentials != null) {

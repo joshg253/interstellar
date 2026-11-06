@@ -10,6 +10,8 @@ class APIMessages {
 
   Future<MessageListModel> list({int? myUserId, String? page}) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         const path = '/messages';
         final query = {'p': page};
@@ -49,6 +51,8 @@ class APIMessages {
     String? page,
   }) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/messages/thread/$threadId/newest';
         final query = {'p': page};
@@ -110,6 +114,8 @@ class APIMessages {
 
   Future<MessageThreadModel> create(int userId, String body) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/users/$userId/message';
 
@@ -158,6 +164,8 @@ class APIMessages {
     String body,
   ) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/messages/thread/$threadId/reply';
 

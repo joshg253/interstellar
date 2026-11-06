@@ -105,6 +105,8 @@ class APIModeration {
 
   Future<PostModel> postPin(PostType postType, int postId, bool pinned) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/moderate/${_postTypeMbin[postType]}/$postId/pin';
 
@@ -157,6 +159,8 @@ class APIModeration {
     bool status,
   ) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path =
             '/moderate/${_postTypeMbin[postType]}/$postId/adult/$status';
@@ -190,6 +194,8 @@ class APIModeration {
     bool status,
   ) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path =
             '/moderate/${_postTypeMbin[postType]}/$postId/${status ? 'trash' : 'restore'}';
@@ -231,6 +237,8 @@ class APIModeration {
 
   Future<PostModel> postLock(PostType postType, int postId, bool locked) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/moderate/${_postTypeMbin[postType]}/$postId/lock';
 
@@ -275,6 +283,8 @@ class APIModeration {
     bool locked,
   ) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         throw Exception('Comment locking not available on mbin');
 
@@ -302,6 +312,8 @@ class APIModeration {
     bool status,
   ) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path =
             '/moderate/${_postTypeMbinComment[postType]}/$commentId/${status ? 'trash' : 'restore'}';
@@ -353,6 +365,8 @@ class APIModeration {
     String? page,
   }) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = communityId != null
             ? '/magazine/$communityId/log'
