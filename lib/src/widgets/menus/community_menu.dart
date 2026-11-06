@@ -34,7 +34,9 @@ Future<void> showCommunityMenu(
 
   final isModerator =
       !(detailedCommunity == null) &&
-      detailedCommunity.moderators.any((mod) => mod.name == ac.localName);
+      detailedCommunity.moderators.any(
+        (mod) => isAccountName(mod.name, ac.selectedAccount),
+      );
 
   return ContextMenu(
     actions: [
@@ -130,7 +132,7 @@ Future<void> showCommunityMenu(
         ),
       if (detailedCommunity != null &&
           detailedCommunity.owner != null &&
-          detailedCommunity.owner!.name == ac.localName)
+          isAccountName(detailedCommunity.owner!.name, ac.selectedAccount))
         ContextMenuItem(
           title: l(context).ownerPanel,
           onTap: () => context.router.push(

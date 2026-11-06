@@ -408,11 +408,10 @@ class _FeedScreenState extends State<FeedScreen> {
     // don't really need for mbin since mbin api returns
     // canAuthUserModerate with content items
     // lemmy and piefed don't return this info
-    final localUserPart = ac.localName;
     final userCanModerate =
         !(widget.createPostCommunity == null) &&
         widget.createPostCommunity!.moderators.any(
-          (mod) => mod.name == localUserPart,
+          (mod) => isAccountName(mod.name, ac.selectedAccount),
         );
 
     final actions = [

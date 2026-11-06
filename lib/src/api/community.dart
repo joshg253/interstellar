@@ -117,6 +117,21 @@ class APICommunity {
         return DetailedCommunityListModel.fromMbin(response.bodyJson);
 
       case ServerSoftware.lemmy:
+        if (search == null && filter == ExploreFilter.moderated) {
+          // Some Lemmy servers ignore `type_=ModeratorView` and list every
+          // community, so ask for the user's own moderated list instead.
+          final site = await client.get('/site');
+          final moderates =
+              ((site.bodyJson['my_user'] as JsonMap?)?['moderates']
+                  as List<dynamic>?) ??
+              [];
+          final items = await Future.wait([
+            for (final entry in moderates)
+              get(((entry as JsonMap)['community']! as JsonMap)['id']! as int),
+          ]);
+          return DetailedCommunityListModel(items: items, nextPage: null);
+        }
+
         if (search == null) {
           const path = '/community/list';
           final query = {

@@ -43,7 +43,7 @@ class AppHome extends StatefulWidget {
 class _AppHomeState extends State<AppHome> {
   int _navIndex = 0;
   Key _feedKey = UniqueKey();
-  Key _exploreKey = UniqueKey();
+  final Key _exploreKey = UniqueKey();
   Key _accountKey = UniqueKey();
   Key _inboxKey = UniqueKey();
   final ScrollController _feedScrollController = ScrollController();
@@ -129,9 +129,8 @@ class _AppHomeState extends State<AppHome> {
     final ac = context.read<AppController>();
     ac.refreshState = () {
       setState(() {
-        // The feed adopts the new selected account itself, so it keeps its
-        // state (and its scroll controller) across a switch.
-        _exploreKey = UniqueKey();
+        // The feed and Explore adopt the new selected account themselves, so
+        // they keep their state (scroll position, search) across a switch.
         _accountKey = UniqueKey();
         _inboxKey = UniqueKey();
       });

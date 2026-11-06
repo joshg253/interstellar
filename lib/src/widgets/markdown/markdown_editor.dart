@@ -10,6 +10,7 @@ import 'package:interstellar/src/controller/database/database.dart';
 import 'package:interstellar/src/models/config_share.dart';
 import 'package:interstellar/src/utils/debouncer.dart';
 import 'package:interstellar/src/utils/utils.dart';
+import 'package:interstellar/src/widgets/account_scope.dart';
 import 'package:interstellar/src/widgets/emoji_picker/emoji_picker.dart';
 import 'package:interstellar/src/widgets/loading_button.dart';
 import 'package:interstellar/src/widgets/markdown/drafts_controller.dart';
@@ -822,7 +823,7 @@ class _MarkdownEditorActionImage extends _MarkdownEditorActionBase {
 
       var url = '';
       if (image != null && context.mounted) {
-        url = await context.read<AppController>().api.images.uploadImage(
+        url = await context.scopedApi.images.uploadImage(
           store: context.read<AppController>().profile.defaultImageStore,
           image: image,
         );

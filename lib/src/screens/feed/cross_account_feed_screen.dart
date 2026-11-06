@@ -6,6 +6,7 @@ import 'package:interstellar/src/api/feed_source.dart';
 import 'package:interstellar/src/controller/controller.dart';
 import 'package:interstellar/src/controller/server.dart';
 import 'package:interstellar/src/models/post.dart';
+import 'package:interstellar/src/screens/feed/create_screen.dart';
 import 'package:interstellar/src/screens/feed/cross_account_feed.dart';
 import 'package:interstellar/src/screens/feed/feed_agregator.dart';
 import 'package:interstellar/src/screens/feed/feed_screen.dart'
@@ -437,6 +438,17 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
     }
   }
 
+  /// Starts a new post as the "interact as" account when it can post, else
+  /// the first account that can; the screen lets the user switch.
+  Future<void> _createPost() async {
+    final ac = context.read<AppController>();
+    final account = resolveActiveAccount(ac, postingAccounts(ac));
+    if (account == null) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => CreateScreen(account: account)),
+    );
+  }
+
   Future<void> _open(String shownAccount, PostModel shownPost) async {
     final ac = context.read<AppController>();
     // Open through the global "interact as" account when it has this post.
@@ -487,6 +499,22 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
         '${s.account}: ${s.error}',
     ];
     final ac = context.watch<AppController>();
+    // Ticked accounts that cannot serve this source (e.g. guests on a
+    // personal feed) are left out; say so rather than silently.
+    final skipped = _community != null
+        ? const <String>[]
+        : [
+            for (final account in ac.accounts.keys)
+              if (widget.accounts.includes(account) &&
+                  _apis.containsKey(account) &&
+                  !_supports(ac, account, _filter))
+                // guests have no name, only the server
+                '${isAccountSignedIn(ac, account) ? account : '${account.split('@').last} (guest)'}'
+                    ' has no ${_filter.title(context)} feed',
+          ];
+    // retrying cannot help with the skipped ones
+    final canRetry = problems.isNotEmpty;
+    problems.addAll(skipped);
     final hideRead = _effectiveHideRead(ac);
     final visible = _visible(ac);
     // The same actions as the regular feed, placed where the profile says.
@@ -495,6 +523,12 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
         ? (fallbackToAppBar ? ActionLocation.appBar : ActionLocation.hide)
         : parseEnum(ActionLocation.values, ActionLocation.hide, setting.name);
     final actions = [
+      feedActionCreateNew(context).withProps(
+        postingAccounts(ac).isEmpty
+            ? ActionLocation.hide
+            : ac.profile.feedActionCreateNew,
+        _createPost,
+      ),
       feedActionSetFilter(context).withProps(
         place(ac.profile.feedActionSetFilter, fallbackToAppBar: true),
         _openFilters,
@@ -625,7 +659,10 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
                 return MaterialBanner(
                   content: Text(problems.join('\n')),
                   actions: [
-                    TextButton(onPressed: _reset, child: const Text('Retry')),
+                    if (canRetry)
+                      TextButton(onPressed: _reset, child: const Text('Retry'))
+                    else
+                      const SizedBox.shrink(),
                   ],
                 );
               }
@@ -689,14 +726,34 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
                   final ac = context.watch<AppController>();
                   final copies =
                       _feed?.copiesOf(account, post) ?? [(account, post)];
-                  // Show the post through the global account's copy.
-                  final (shown, shownPost) = pickCopy(
-                    copies,
-                    resolveActiveAccount(ac, [for (final c in copies) c.$1]),
+                  // Actions go through the global account's copy when it has
+                  // one; otherwise through the first copy, which the card says.
+                  final acting = resolveActiveAccount(
+                    ac,
+                    ac.accounts.keys.toList(),
                   );
+                  final (shown, shownPost) = pickCopy(copies, acting);
+                  final actingMissing = acting != null && acting != shown;
                   final api = _apis[shown];
                   if (api == null) return const SizedBox.shrink();
                   final key = (shown, shownPost.id);
+                  // The app decides how the post looks, not the account:
+                  // media from the best copy, your vote state only when it
+                  // is the acting account's own.
+                  var display = _overrides[key] ?? shownPost;
+                  display = display.copyWith(
+                    image: bestImage([
+                      display.image,
+                      for (final c in copies) c.$2.image,
+                    ]),
+                  );
+                  if (actingMissing && _overrides[key] == null) {
+                    display = display.copyWith(
+                      myVote: null,
+                      myBoost: null,
+                      bookmarks: null,
+                    );
+                  }
                   return AccountScope(
                     account: shown,
                     api: api,
@@ -704,7 +761,7 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         PostItem(
-                          _overrides[key] ?? shownPost,
+                          display,
                           (updated) =>
                               setState(() => _overrides[key] = updated),
                           onTap: () => _open(account, post),
@@ -718,6 +775,20 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
                             mainAxisAlignment: MainAxisAlignment.end,
                             spacing: 4,
                             children: [
+                              if (actingMissing)
+                                Tooltip(
+                                  message:
+                                      '$acting has no copy of this post; '
+                                      'acting as $shown',
+                                  triggerMode: TooltipTriggerMode.tap,
+                                  child: Text(
+                                    '${acting.split('@').last} → '
+                                    '${shown.split('@').last}',
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.bodySmall,
+                                  ),
+                                ),
                               for (final c in copies)
                                 AccountAvatar(c.$1, radius: 9),
                             ],

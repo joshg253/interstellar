@@ -20,6 +20,7 @@ import 'package:interstellar/src/controller/router.gr.dart';
 import 'package:interstellar/src/controller/server.dart';
 import 'package:interstellar/src/init_push_notifications.dart';
 import 'package:interstellar/src/models/post.dart';
+import 'package:interstellar/src/utils/client_cache.dart';
 import 'package:interstellar/src/utils/globals.dart';
 import 'package:interstellar/src/utils/http_client.dart';
 import 'package:interstellar/src/utils/utils.dart';
@@ -626,6 +627,7 @@ class AppController with ChangeNotifier {
     _rebuildProfile();
 
     _accounts.remove(key);
+    _oauthClients.remove(key);
     _selectedAccount =
         _accounts.keys.where(_isSelectable).firstOrNull ?? defaultAccount;
 
@@ -699,6 +701,8 @@ class AppController with ChangeNotifier {
     _api = await getApiForAccount(_selectedAccount);
   }
 
+  final ClientCache<oauth2.Client> _oauthClients = ClientCache();
+
   Future<API> getApiForAccount(String account) async {
     final instance = account.split('@').last;
     final software = _servers[instance]!.software;
@@ -717,16 +721,26 @@ class AppController with ChangeNotifier {
         final credentials = _accounts[account]?.oauth;
         if (credentials != null) {
           final identifier = _servers[instance]!.oauthIdentifier;
-          httpClient = oauth2.Client(
-            credentials,
-            identifier: identifier,
-            onCredentialsRefreshed: (newCredentials) async {
-              setAccount(
-                account,
-                _accounts[account]!.copyWith(oauth: Value(newCredentials)),
-              );
-            },
-            httpClient: appHttpClient,
+          // One client per account: refresh tokens are single use, so a
+          // second client would hold a retired token (see ClientCache).
+          httpClient = _oauthClients.get(
+            account,
+            credentials.refreshToken ?? credentials.accessToken,
+            () => oauth2.Client(
+              credentials,
+              identifier: identifier,
+              onCredentialsRefreshed: (newCredentials) async {
+                _oauthClients.rekey(
+                  account,
+                  newCredentials.refreshToken ?? newCredentials.accessToken,
+                );
+                setAccount(
+                  account,
+                  _accounts[account]!.copyWith(oauth: Value(newCredentials)),
+                );
+              },
+              httpClient: appHttpClient,
+            ),
           );
         }
       case ServerSoftware.lemmy:

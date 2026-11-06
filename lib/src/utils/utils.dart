@@ -9,6 +9,8 @@ import 'package:interstellar/l10n/app_localizations.dart';
 import 'package:interstellar/src/api/feed_source.dart';
 import 'package:interstellar/src/controller/controller.dart';
 import 'package:interstellar/src/controller/server.dart';
+import 'package:interstellar/src/widgets/account_avatar.dart';
+import 'package:interstellar/src/widgets/account_scope.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
@@ -75,21 +77,44 @@ String dateDiffFormat({required DateTime start, DateTime? end}) {
   return '${seconds}s';
 }
 
+/// Whether an account can write: it needs credentials, and its server type
+/// must support writing (guests and read-only types cannot). A [standIn] copy
+/// is shown in place of the chosen account's, which has none: acting on it
+/// would act as the wrong account.
+bool canWriteAs({
+  required bool signedIn,
+  required ServerSoftware software,
+  bool standIn = false,
+}) => signedIn && software.canBeAppAccount && !standIn;
+
+/// [value] when the acting account may write, else [otherwise]. Inside an
+/// [AccountScope] (merged views) that is the scope's account, not the
+/// selected one.
 T? whenLoggedIn<T>(
   BuildContext context,
   T? value, {
   String? matchesUsername,
   ServerSoftware? matchesSoftware,
   T? otherwise,
-}) =>
-    context.read<AppController>().isLoggedIn &&
-        (matchesUsername == null ||
-            context.read<AppController>().selectedAccount.split('@').first ==
-                matchesUsername) &&
-        (matchesSoftware == null ||
-            context.read<AppController>().serverSoftware == matchesSoftware)
-    ? value
-    : otherwise;
+}) {
+  final ac = context.read<AppController>();
+  final scope = AccountScope.maybeOf(context);
+  final account = scope?.account ?? ac.selectedAccount;
+  final software = scope?.api.client.software ?? ac.serverSoftware;
+  final loggedIn = scope == null
+      ? ac.isLoggedIn
+      : canWriteAs(
+          signedIn: isAccountSignedIn(ac, account),
+          software: software,
+          standIn: scope.standIn,
+        );
+  return loggedIn &&
+          (matchesUsername == null ||
+              account.split('@').first == matchesUsername) &&
+          (matchesSoftware == null || software == matchesSoftware)
+      ? value
+      : otherwise;
+}
 
 String getNameHost(BuildContext context, String username) {
   final split = username.split('@');
@@ -329,4 +354,31 @@ Future<File> cacheRemoteFile(String url) async {
   }
 
   return file;
+}
+
+/// Whether [name], as a server lists a user (bare when local to that server,
+/// `name@host` otherwise), is the signed-in [account] (`name@host`).
+/// A server lists its own users bare, so a bare name is the selected
+/// account's server's user.
+bool isAccountName(String name, String account) =>
+    name == account || name == account.split('@').first;
+
+/// The `!name@host` form of a community. A bare [name] is local to the server
+/// that owns it, which [apId] names; [viewerHost] is only the fallback.
+String communityGlobalName(String name, String? apId, String viewerHost) {
+  if (name.contains('@')) return '!$name';
+  final host = apId == null ? null : Uri.tryParse(apId)?.host;
+  return '!$name@${host == null || host.isEmpty ? viewerHost : host}';
+}
+
+/// The server to append to [name] (`user` or `user@host`), or null when the
+/// name is shown without one. A bare name belongs to [viewerHost].
+String? instanceToShow(
+  String name, {
+  required bool alwaysShow,
+  required String viewerHost,
+}) {
+  if (!alwaysShow) return null;
+  final parts = name.split('@');
+  return parts.length > 1 ? parts[1] : viewerHost;
 }

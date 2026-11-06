@@ -1,7 +1,6 @@
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:interstellar/src/controller/controller.dart';
-import 'package:interstellar/src/controller/server.dart';
 import 'package:interstellar/src/screens/feed/cross_account_feed_screen.dart';
 import 'package:interstellar/src/screens/feed/feed_accounts.dart';
 import 'package:interstellar/src/screens/feed/feed_screen.dart';
@@ -62,13 +61,16 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
     final ac = context.watch<AppController>();
 
     // The selected account changed from elsewhere (e.g. the inbox switcher):
-    // the feed follows it, as the original Feed always has.
+    // the feed follows it, as the original Feed always has, unless it was
+    // already ticked, in which case the ticked set is kept.
     if (_selectedSeen != ac.selectedAccount) {
       _selectedSeen = ac.selectedAccount;
       _switching = false;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _accounts.set({ac.selectedAccount});
-      });
+      if (!_accounts.includes(ac.selectedAccount)) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _accounts.set({ac.selectedAccount});
+        });
+      }
     }
 
     final single = _accounts.single(ac);

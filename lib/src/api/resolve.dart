@@ -1,6 +1,7 @@
 import 'package:interstellar/src/api/client.dart';
 import 'package:interstellar/src/api/mastodon.dart';
 import 'package:interstellar/src/controller/server.dart';
+import 'package:interstellar/src/models/community.dart';
 import 'package:interstellar/src/models/post.dart';
 import 'package:interstellar/src/utils/utils.dart';
 
@@ -44,7 +45,43 @@ Future<PostModel?> resolvePost(ServerClient client, String apId) async {
       if (statuses == null || statuses.isEmpty) return null;
       return mastodonPost(statuses.first, client.domain);
     case ServerSoftware.mbin:
-      // Not checked whether mbin's API can fetch a remote post by URL.
+      // Search by URL returns the matching ActivityPub objects (fetching them
+      // if unknown): threads, microblogs and comments mixed together.
+      final response = await client.get('/search', queryParams: {'q': apId});
+      final objects = (response.bodyJson['apObjects'] as List?)
+          ?.cast<JsonMap>();
+      if (objects == null) return null;
+      for (final object in objects) {
+        if (object['commentId'] != null) continue;
+        if (object['entryId'] != null) return PostModel.fromMbinEntry(object);
+        if (object['postId'] != null) return PostModel.fromMbinPost(object);
+      }
+      return null;
+  }
+}
+
+/// Asks [client]'s server to fetch the community with ActivityPub id [apId]
+/// (if it has not seen it yet) and returns that server's own copy of it, or
+/// null if it can't be found or the software doesn't support it.
+Future<DetailedCommunityModel?> resolveCommunity(
+  ServerClient client,
+  String apId,
+) async {
+  switch (client.software) {
+    case ServerSoftware.lemmy:
+    case ServerSoftware.piefed:
+      final response = await client.get(
+        '/resolve_object',
+        queryParams: {'q': apId},
+      );
+      final community = response.bodyJson['community'];
+      if (community == null) return null;
+      final json = {'community_view': community};
+      return client.software == ServerSoftware.lemmy
+          ? DetailedCommunityModel.fromLemmy(json)
+          : DetailedCommunityModel.fromPiefed(json);
+    case ServerSoftware.mastodon:
+    case ServerSoftware.mbin:
       return null;
   }
 }

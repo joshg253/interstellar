@@ -1,20 +1,17 @@
 import 'dart:async';
 
 import 'package:auto_route/auto_route.dart';
-import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:interstellar/src/api/bookmark.dart';
 import 'package:interstellar/src/api/comments.dart';
 import 'package:interstellar/src/api/notifications.dart';
-import 'package:interstellar/src/api/resolve.dart';
 import 'package:interstellar/src/controller/controller.dart';
 import 'package:interstellar/src/controller/router.gr.dart';
 import 'package:interstellar/src/controller/server.dart';
 import 'package:interstellar/src/models/comment.dart';
 import 'package:interstellar/src/models/post.dart';
-import 'package:interstellar/src/screens/feed/merged_comment_section.dart';
-import 'package:interstellar/src/screens/feed/merged_comments.dart';
+import 'package:interstellar/src/screens/feed/merged_post.dart';
 import 'package:interstellar/src/screens/feed/post_comment.dart';
 import 'package:interstellar/src/screens/feed/post_item.dart';
 import 'package:interstellar/src/widgets/account_scope.dart';
@@ -169,15 +166,22 @@ class PostPage extends StatefulWidget {
 class _PostPageState extends State<PostPage> {
   PostModel? _data;
 
-  // Latest state of the other accounts' copies of this post.
-  late final Map<String, PostModel> _copyPosts = {
-    for (final c in widget.copies) c.account: c.post,
-  };
+  late final _copies = PostCopies(
+    copies: widget.copies,
+    candidates: widget.candidates,
+  )..addListener(_onCopies);
 
-  // Copies added by resolving the post on another account.
-  final List<AccountCopy> _resolved = [];
+  void _onCopies() {
+    if (mounted) setState(() {});
+  }
 
-  List<AccountCopy> get _copies => [...widget.copies, ..._resolved];
+  @override
+  void dispose() {
+    _copies
+      ..removeListener(_onCopies)
+      ..dispose();
+    super.dispose();
+  }
 
   CommentSort commentSort = CommentSort.hot;
 
@@ -214,7 +218,7 @@ class _PostPageState extends State<PostPage> {
       throw Exception('Post data was uninitialized');
     }
 
-    unawaited(_loadCopies());
+    unawaited(_copies.loadAll());
 
     if (!mounted) return;
     _onUpdate(
@@ -225,58 +229,6 @@ class _PostPageState extends State<PostPage> {
             : null),
       ], true)).first,
     );
-  }
-
-  /// The list models of the other accounts' copies have no cross-posts (only
-  /// the single-post fetch returns them), so fetch each in full.
-  Future<void> _loadCopies() => Future.wait(widget.copies.map(_loadCopy));
-
-  Future<void> _loadCopy(AccountCopy copy) async {
-    try {
-      final full = await switch (copy.post.type) {
-        PostType.thread => copy.api.threads.get(copy.post.id),
-        PostType.microblog => copy.api.microblogs.get(copy.post.id),
-      };
-      if (!mounted) return;
-      setState(() => _copyPosts[copy.account] = full);
-    } catch (_) {
-      // keep the list copy; its cross-posts just won't show
-    }
-  }
-
-  /// Accounts that have no copy of this post yet, and so can be resolved.
-  List<PendingAccount> get _pending => [
-    for (final c in widget.candidates)
-      if (!_copies.any((copy) => copy.account == c.account)) c,
-  ];
-
-  /// Asks [account]'s server to fetch this post, then adds its copy. Returns
-  /// whether the account now has one.
-  Future<bool> _resolveFor(String account) async {
-    final candidate = _pending.firstWhereOrNull((c) => c.account == account);
-    final apId = _data?.apId;
-    if (candidate == null || apId == null) return false;
-
-    String? problem;
-    try {
-      final found = await resolvePost(candidate.api.client, apId);
-      if (found == null) {
-        problem = 'could not find this post';
-      } else if (mounted) {
-        final copy = (account: account, api: candidate.api, post: found);
-        setState(() => _resolved.add(copy));
-        unawaited(_loadCopy(copy));
-        return true;
-      }
-    } catch (e) {
-      problem = '$e';
-    }
-    if (mounted && problem != null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('$account: $problem')));
-    }
-    return false;
   }
 
   void _onUpdate(PostModel newValue) {
@@ -631,26 +583,7 @@ class _PostPageState extends State<PostPage> {
 
     final post = _data!;
 
-    final ac = context.read<AppController>();
-
-    // Cross-posts from every account, matched by ActivityPub id.
-    final pageScope = AccountScope.maybeOf(context);
-    final showMerged = pageScope != null;
-    final crossGroups = showMerged
-        ? mergeTrees<PostModel>(
-            [
-              (pageScope.account, post.crossPosts),
-              for (final c in _copies)
-                (c.account, (_copyPosts[c.account] ?? c.post).crossPosts),
-            ],
-            keyOf: (p) => p.apId,
-            childrenOf: (_) => const [],
-          )
-        : <MergedNode<PostModel>>[];
-    final accountApis = {
-      if (pageScope != null) pageScope.account: pageScope.api,
-      for (final c in _copies) c.account: c.api,
-    };
+    final showMerged = AccountScope.maybeOf(context) != null;
 
     return Scaffold(
       appBar: AppBar(
@@ -692,20 +625,7 @@ class _PostPageState extends State<PostPage> {
             ),
           ),
           // The account selector is always the rightmost action.
-          if (AccountScope.maybeOf(context) case final pageScope?)
-            Padding(
-              padding: const EdgeInsets.only(right: 4),
-              child: AccountMenuButton(
-                accounts: [pageScope.account, ..._copies.map((c) => c.account)],
-                counts: {
-                  pageScope.account: post.numComments,
-                  for (final c in _copies)
-                    c.account: (_copyPosts[c.account] ?? c.post).numComments,
-                },
-                pending: [for (final p in _pending) p.account],
-                onResolve: _resolveFor,
-              ),
-            ),
+          if (showMerged) mergedAccountMenu(context, _copies, post),
         ],
       ),
       body: SafeArea(
@@ -718,44 +638,14 @@ class _PostPageState extends State<PostPage> {
           child: CustomScrollView(
             slivers: [
               SliverToBoxAdapter(
-                child: ValueListenableBuilder<String?>(
-                  valueListenable: interactAccount,
-                  builder: (context, _, _) {
-                    // In a scoped page the header follows the "Interact as"
-                    // selector, using that account's own copy of the post.
-                    final scope = AccountScope.maybeOf(context);
-                    final merged = scope != null;
-                    final active = merged
-                        ? resolveActiveAccount(ac, [
-                            scope.account,
-                            ..._copies.map((c) => c.account),
-                          ])
-                        : null;
-                    final copy = merged
-                        ? _copies.firstWhereOrNull((c) => c.account == active)
-                        : null;
-                    final headerAccount = copy?.account ?? scope?.account;
-                    final headerApi = copy?.api ?? scope?.api;
-                    final post = copy == null
-                        ? _data!
-                        : (_copyPosts[copy.account] ?? copy.post);
-                    void onUpdate(PostModel updated) => copy == null
-                        ? _onUpdate(updated)
-                        : setState(() => _copyPosts[copy.account] = updated);
-
-                    if (headerAccount == null || headerApi == null) {
-                      return _buildPostItem(context, post, onUpdate);
-                    }
-                    return AccountScope(
-                      account: headerAccount,
-                      api: headerApi,
-                      child: Builder(
-                        builder: (innerContext) =>
-                            _buildPostItem(innerContext, post, onUpdate),
-                      ),
-                    );
-                  },
-                ),
+                child: showMerged
+                    ? MergedPostHeader(
+                        copies: _copies,
+                        post: post,
+                        onUpdate: _onUpdate,
+                        builder: _buildPostItem,
+                      )
+                    : _buildPostItem(context, post, _onUpdate),
               ),
               if (_data != null && _data!.crossPosts.isNotEmpty && !showMerged)
                 SliverToBoxAdapter(
@@ -789,32 +679,8 @@ class _PostPageState extends State<PostPage> {
                     ),
                   ),
                 ),
-              if (AccountScope.maybeOf(context) != null)
-                // The same post as seen from several accounts, merged into
-                // one comment tree with a vote row per account.
-                MergedCommentSection(
-                  key: Key('merged-${post.id}$commentSort-${_copies.length}'),
-                  sort: commentSort,
-                  opUserId: post.user.id,
-                  isLocked: post.isLocked,
-                  sources: [
-                    CommentSource(
-                      account: AccountScope.maybeOf(context)!.account,
-                      api: AccountScope.maybeOf(context)!.api,
-                      postType: post.type,
-                      postId: post.id,
-                      numComments: post.numComments,
-                    ),
-                    for (final copy in _copies)
-                      CommentSource(
-                        account: copy.account,
-                        api: copy.api,
-                        postType: copy.post.type,
-                        postId: copy.post.id,
-                        numComments: copy.post.numComments,
-                      ),
-                  ],
-                )
+              if (showMerged)
+                ...mergedCommentSlivers(context, _copies, post, commentSort)
               else
                 CommentSection(
                   id: post.id,
@@ -824,20 +690,8 @@ class _PostPageState extends State<PostPage> {
                   isLocked: post.isLocked,
                   key: _mainCommentSectionKey,
                 ),
-              if (showMerged &&
+              if (!showMerged &&
                   context.read<AppController>().profile.showCrossPostComments)
-                ...crossGroups.map(
-                  (group) => CrossPostSection(
-                    key: ValueKey(_copies.length),
-                    group: group,
-                    apis: accountApis,
-                    sort: commentSort,
-                  ),
-                )
-              else if (context
-                  .read<AppController>()
-                  .profile
-                  .showCrossPostComments)
                 ...post.crossPosts
                     .where((crossPost) => crossPost.numComments > 0)
                     .map(

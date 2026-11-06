@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:interstellar/src/api/api.dart';
 import 'package:interstellar/src/controller/controller.dart';
@@ -13,24 +12,62 @@ class AccountScope extends InheritedWidget {
     required this.account,
     required this.api,
     required super.child,
+    this.standIn = false,
     super.key,
   });
 
   final String account;
   final API api;
 
+  /// This account's copy is shown because the chosen account has none, so it
+  /// is read-only: actions would run as the wrong account.
+  final bool standIn;
+
   static AccountScope? maybeOf(BuildContext context) =>
       context.getInheritedWidgetOfExactType<AccountScope>();
 
   @override
   bool updateShouldNotify(AccountScope oldWidget) =>
-      account != oldWidget.account || api != oldWidget.api;
+      account != oldWidget.account ||
+      api != oldWidget.api ||
+      standIn != oldWidget.standIn;
+}
+
+/// Where to open a community or user shown through an [AccountScope]. The
+/// screens look targets up on the selected account's server, where the shown
+/// account's numeric id means something else (or nothing): from another
+/// server the id is dropped and the name made explicit.
+({String name, int? id}) scopedTarget(
+  String name,
+  int id, {
+  required String? scopeHost,
+  required String viewerHost,
+}) {
+  if (scopeHost == null || scopeHost == viewerHost) return (name: name, id: id);
+  final parts = name.split('@');
+  final host = parts.length > 1 ? parts[1] : scopeHost;
+  return (
+    name: host == viewerHost ? parts.first : '${parts.first}@$host',
+    id: null,
+  );
 }
 
 extension ScopedApi on BuildContext {
   /// The API of the enclosing [AccountScope], else the selected account's.
   API get scopedApi =>
       AccountScope.maybeOf(this)?.api ?? read<AppController>().api;
+}
+
+extension ScopedTarget on BuildContext {
+  /// [scopedTarget] for the enclosing scope and the selected account.
+  ({String name, int? id}) targetFor(String name, int id) {
+    return scopedTarget(
+      name,
+      id,
+      scopeHost: AccountScope.maybeOf(this)?.account.split('@').last,
+      viewerHost: read<AppController>().instanceHost,
+    );
+  }
 }
 
 extension ScopedReadStatus on BuildContext {

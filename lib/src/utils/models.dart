@@ -49,3 +49,31 @@ String? lemmyCalcNextIntPage(List<dynamic> list, String? currentPage) =>
 /// match the same item seen through other accounts.
 String? mbinFallbackApId(String? apId, String? magazineProfile, String path) =>
     apId ?? (magazineProfile == null ? null : '$magazineProfile$path');
+
+/// Fills the `apId` Mbin leaves out for its own threads, microblogs and
+/// comments, walking [json] (a response body) in place. [origin] is the
+/// server the response came from (`https://host`); other servers know the item
+/// as `<origin>/m/<magazine>/...`, whether the magazine is local or remote.
+void fillMbinApIds(Object? json, String origin) {
+  if (json is List) {
+    json.forEach((e) => fillMbinApIds(e, origin));
+  } else if (json is Map) {
+    final magazine = json['magazine'];
+    if (json['apId'] == null &&
+        magazine is Map &&
+        magazine['magazineId'] != null &&
+        magazine['name'] is String) {
+      final base = '$origin/m/${magazine['name']}';
+      if (json['commentId'] != null) {
+        json['apId'] = json['postId'] != null
+            ? '$base/p/${json['postId']}/-/reply/${json['commentId']}'
+            : '$base/t/${json['entryId']}/-/comment/${json['commentId']}';
+      } else if (json['entryId'] != null) {
+        json['apId'] = '$base/t/${json['entryId']}';
+      } else if (json['postId'] != null) {
+        json['apId'] = '$base/p/${json['postId']}';
+      }
+    }
+    json.values.forEach((e) => fillMbinApIds(e, origin));
+  }
+}

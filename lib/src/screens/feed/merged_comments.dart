@@ -1,3 +1,5 @@
+import 'package:interstellar/src/models/image.dart';
+
 /// One logical comment: every account's copy of it, plus the merged replies.
 class MergedNode<T> {
   MergedNode(this.copies, this.children);
@@ -51,3 +53,14 @@ List<MergedNode<T>> mergeTrees<T>(
 /// one, otherwise the first.
 (String, T) pickCopy<T>(List<(String, T)> copies, String? active) =>
     copies.firstWhere((c) => c.$1 == active, orElse: () => copies.first);
+
+/// The image to draw for a post that several accounts returned. Servers differ:
+/// some give a full image with its size, others a bare thumbnail. Prefer one
+/// with known dimensions, so the card looks the same whichever account acts.
+ImageModel? bestImage(Iterable<ImageModel?> images) {
+  final all = images.nonNulls.toList();
+  return all
+          .where((i) => i.blurHashWidth != null && i.blurHashHeight != null)
+          .firstOrNull ??
+      all.firstOrNull;
+}

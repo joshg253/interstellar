@@ -7,9 +7,11 @@ import 'package:interstellar/src/models/post.dart';
 import 'package:interstellar/src/screens/feed/merged_comments.dart';
 import 'package:interstellar/src/screens/feed/post_comment.dart';
 import 'package:interstellar/src/screens/feed/post_item.dart';
+import 'package:interstellar/src/screens/feed/post_page.dart';
 import 'package:interstellar/src/utils/utils.dart';
 import 'package:interstellar/src/widgets/account_avatar.dart';
 import 'package:interstellar/src/widgets/account_scope.dart';
+import 'package:material_symbols_icons/symbols.dart';
 import 'package:provider/provider.dart';
 
 /// One account's view of a post's comments.
@@ -235,6 +237,7 @@ class MergedCommentTile extends StatelessWidget {
         AccountScope(
           account: account,
           api: apis[account]!,
+          standIn: active != null && account != active,
           child: PostComment(
             comment,
             (updated) => onUpdate(account, updated),
@@ -292,17 +295,33 @@ class MergedCommentTile extends StatelessWidget {
   }
 }
 
-/// The account to act as: the global selector's choice if it is one of
-/// [accounts] and signed in, else the first signed-in one; null if all guests.
-String? resolveActiveAccount(AppController ac, List<String> accounts) {
-  final chosen = interactAccount.value;
-  if (chosen != null &&
-      accounts.contains(chosen) &&
-      isAccountSignedIn(ac, chosen)) {
-    return chosen;
+/// The account to act as: an explicit pick if it is one of [accounts] and
+/// can act; otherwise the account the user is on ([selected]); otherwise the
+/// first that can; null if none can.
+String? pickActiveAccount({
+  required String? chosen,
+  required String? selected,
+  required List<String> accounts,
+  required bool Function(String account) signedIn,
+}) {
+  for (final candidate in [chosen, selected]) {
+    if (candidate != null &&
+        accounts.contains(candidate) &&
+        signedIn(candidate)) {
+      return candidate;
+    }
   }
-  return accounts.where((a) => isAccountSignedIn(ac, a)).firstOrNull;
+  return accounts.where(signedIn).firstOrNull;
 }
+
+/// The account to act as in merged views (see [pickActiveAccount]).
+String? resolveActiveAccount(AppController ac, List<String> accounts) =>
+    pickActiveAccount(
+      chosen: interactAccount.value,
+      selected: ac.selectedAccount,
+      accounts: accounts,
+      signedIn: (a) => isAccountSignedIn(ac, a),
+    );
 
 /// App bar account picker: shows the account in use and opens a menu to
 /// change it. The choice is global and sticky, shared by the list screen and
@@ -393,10 +412,16 @@ class AccountMenuButton extends StatelessWidget {
   }
 }
 
-/// One cross-post (the same link in another community) across all accounts:
-/// the post itself, shown through the selected account's copy so its votes
-/// and actions act as that account, then its comments merged like the main
-/// post's.
+/// Identity of a cross-post group in a list: its first copy, plus the number
+/// of accounts' copies so the section rebuilds when one is added.
+Key crossPostGroupKey(MergedNode<PostModel> group, int copies) {
+  final (account, post) = group.copies.first;
+  return ValueKey((account, post.apId ?? post.id, copies));
+}
+
+/// One cross-post (the same link in another community) across all accounts: a
+/// header row (tap opens the post, the menu shows its card) over its comments,
+/// merged like the main post's.
 class CrossPostSection extends StatefulWidget {
   const CrossPostSection({
     required this.group,
@@ -416,6 +441,40 @@ class CrossPostSection extends StatefulWidget {
 class _CrossPostSectionState extends State<CrossPostSection> {
   // Copies changed locally (e.g. voted), keyed by account.
   final Map<String, PostModel> _overrides = {};
+
+  /// [build] inside the scope of [account]'s copy (read-only when [active] has
+  /// none).
+  Widget _scoped(
+    String account,
+    String? active,
+    Widget Function(BuildContext context) build,
+  ) => AccountScope(
+    account: account,
+    api: widget.apis[account]!,
+    standIn: active != null && account != active,
+    child: Builder(builder: build),
+  );
+
+  /// The cross-post's full card (votes, actions), in a sheet.
+  void _showCard(BuildContext context, String account, String? active) {
+    final post = widget.group.copies.firstWhere((c) => c.$1 == account).$2;
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => StatefulBuilder(
+        builder: (_, setSheet) => _scoped(
+          account,
+          active,
+          (innerContext) => SingleChildScrollView(
+            child: PostItem(_overrides[account] ?? post, (updated) {
+              setState(() => _overrides[account] = updated);
+              setSheet(() {});
+            }),
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -437,14 +496,22 @@ class _CrossPostSectionState extends State<CrossPostSection> {
                 for (final c in copies) c.$1,
               ]);
               final (account, post) = pickCopy(copies, active);
-              return AccountScope(
-                account: account,
-                api: widget.apis[account]!,
-                child: Builder(
-                  builder: (innerContext) => PostItem(
-                    post,
-                    (updated) => setState(() => _overrides[account] = updated),
-                    userCanModerate: false,
+              return _scoped(
+                account,
+                active,
+                (innerContext) => ListTile(
+                  title: Text(
+                    l(innerContext).crossPostComments(post.community.name),
+                    style: Theme.of(innerContext).textTheme.titleMedium,
+                  ),
+                  trailing: IconButton(
+                    onPressed: () => _showCard(innerContext, account, active),
+                    icon: const Icon(Symbols.more_vert_rounded),
+                  ),
+                  onTap: () => pushPostPage(
+                    innerContext,
+                    communityName: post.community.name,
+                    initData: post,
                   ),
                 ),
               );

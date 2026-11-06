@@ -5,6 +5,7 @@ import 'package:interstellar/src/models/community.dart';
 import 'package:interstellar/src/models/user.dart';
 import 'package:interstellar/src/screens/explore/user_item.dart';
 import 'package:interstellar/src/utils/utils.dart';
+import 'package:interstellar/src/widgets/account_scope.dart';
 import 'package:interstellar/src/widgets/loading_button.dart';
 import 'package:interstellar/src/widgets/markdown/drafts_controller.dart';
 import 'package:interstellar/src/widgets/markdown/markdown_editor.dart';
@@ -189,9 +190,9 @@ class _CommunityOwnerPanelGeneralState
                             widget.data?.isPostingRestrictedToMods)
                 ? null
                 : () async {
-                    final ac = context.read<AppController>();
+                    final api = context.scopedApi;
                     final result = widget.data == null
-                        ? await ac.api.communityModeration.create(
+                        ? await api.communityModeration.create(
                             name: _nameController.text,
                             title: _titleController.text,
                             description: _descriptionController.text,
@@ -199,7 +200,7 @@ class _CommunityOwnerPanelGeneralState
                             isPostingRestrictedToMods:
                                 _isPostingRestrictedToMods,
                           )
-                        : await ac.api.communityModeration.edit(
+                        : await api.communityModeration.edit(
                             widget.data!.id,
                             title: _titleController.text,
                             description: _descriptionController.text,
@@ -257,11 +258,26 @@ class _CommunityOwnerPanelModeratorsState
               onPressed: _addModController.text.isEmpty
                   ? null
                   : () async {
-                      final user = await context
-                          .read<AppController>()
-                          .api
-                          .users
-                          .getByName(_addModController.text);
+                      // Errors show after any dialog closes, or they would be
+                      // hidden behind its overlay.
+                      final messenger = ScaffoldMessenger.of(context);
+                      final api = context.scopedApi;
+                      final DetailedUserModel user;
+                      try {
+                        user = await api.users.getByName(
+                          _addModController.text,
+                        );
+                      } catch (e) {
+                        messenger.showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Could not find ${_addModController.text}: $e',
+                            ),
+                            showCloseIcon: true,
+                          ),
+                        );
+                        return;
+                      }
 
                       if (!context.mounted) return;
                       final result = await showDialog<List<UserModel>>(
@@ -281,17 +297,27 @@ class _CommunityOwnerPanelModeratorsState
                             ),
                             LoadingFilledButton(
                               onPressed: () async {
-                                context.router.pop(
-                                  await context
-                                      .read<AppController>()
-                                      .api
+                                try {
+                                  final moderators = await api
                                       .communityModeration
                                       .updateModerator(
                                         widget.data.id,
                                         user.id,
                                         true,
+                                      );
+                                  if (!context.mounted) return;
+                                  context.router.pop(moderators);
+                                } catch (e) {
+                                  if (context.mounted) context.router.pop();
+                                  messenger.showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        'Could not add moderator: $e',
                                       ),
-                                );
+                                      showCloseIcon: true,
+                                    ),
+                                  );
+                                }
                               },
                               label: const Text('Add'),
                             ),
@@ -319,7 +345,9 @@ class _CommunityOwnerPanelModeratorsState
               IconButton(
                 icon: const Icon(Symbols.delete_outline_rounded),
                 onPressed: () async {
-                  final result = await showDialog<DetailedCommunityModel>(
+                  final messenger = ScaffoldMessenger.of(context);
+                  final api = context.scopedApi;
+                  final result = await showDialog<List<UserModel>>(
                     context: context,
                     builder: (context) => AlertDialog(
                       title: const Text('Remove moderator'),
@@ -339,17 +367,26 @@ class _CommunityOwnerPanelModeratorsState
                         ),
                         LoadingFilledButton(
                           onPressed: () async {
-                            context.router.pop(
-                              await context
-                                  .read<AppController>()
-                                  .api
-                                  .communityModeration
+                            try {
+                              final moderators = await api.communityModeration
                                   .updateModerator(
                                     widget.data.id,
                                     mod.id,
                                     false,
+                                  );
+                              if (!context.mounted) return;
+                              context.router.pop(moderators);
+                            } catch (e) {
+                              if (context.mounted) context.router.pop();
+                              messenger.showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'Could not remove moderator: $e',
                                   ),
-                            );
+                                  showCloseIcon: true,
+                                ),
+                              );
+                            }
                           },
                           label: const Text('Remove'),
                         ),
@@ -357,7 +394,9 @@ class _CommunityOwnerPanelModeratorsState
                     ),
                   );
 
-                  if (result != null) widget.onUpdate(result);
+                  if (result != null) {
+                    widget.onUpdate(widget.data.copyWith(moderators: result));
+                  }
                 },
               ),
             ],
