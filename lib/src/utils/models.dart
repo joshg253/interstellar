@@ -42,3 +42,10 @@ String getLemmyPiefedActorName(JsonMap json) {
 
 String? lemmyCalcNextIntPage(List<dynamic> list, String? currentPage) =>
     list.isEmpty ? null : (int.parse(currentPage ?? '1') + 1).toString();
+
+/// Mbin returns no `apId` for its own content, yet other servers know it by
+/// the magazine's profile URL plus a fixed path (`/t/<id>` for threads, `/p/<id>`
+/// for microblogs). Building that id lets the copy seen through an mbin account
+/// match the same item seen through other accounts.
+String? mbinFallbackApId(String? apId, String? magazineProfile, String path) =>
+    apId ?? (magazineProfile == null ? null : '$magazineProfile$path');
