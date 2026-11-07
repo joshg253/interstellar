@@ -16,12 +16,16 @@ class ClientCache<C> {
     return client;
   }
 
-  /// Records that [client]'s own login moved on (a token refresh). Does
-  /// nothing, and returns false, if [client] is no longer the account's: it was
-  /// replaced by a new sign-in or the account was removed.
-  bool rekey(String account, C client, String fingerprint) {
+  /// Records that [client]'s own login moved on (a token refresh), from the
+  /// stored login [stored] to [fingerprint]. Does nothing, and returns false,
+  /// if [client] is no longer the account's (replaced by a new sign-in, or the
+  /// account was removed), or if the stored login is no longer the one it was
+  /// cached under (signed in again, and the client not yet replaced).
+  bool rekey(String account, C client, String stored, String fingerprint) {
     final entry = _entries[account];
-    if (entry == null || !identical(entry.$2, client)) return false;
+    if (entry == null || !identical(entry.$2, client) || entry.$1 != stored) {
+      return false;
+    }
     _entries[account] = (fingerprint, client);
     return true;
   }

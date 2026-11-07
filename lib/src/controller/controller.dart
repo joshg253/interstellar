@@ -685,6 +685,11 @@ class AppController with ChangeNotifier {
 
   final ClientCache<oauth2.Client> _oauthClients = ClientCache();
 
+  /// Both tokens: a new sign-in may keep the refresh token but not the access
+  /// token, and the cached client would go on sending the old one.
+  String _oauthFingerprint(oauth2.Credentials credentials) =>
+      '${credentials.accessToken}\n${credentials.refreshToken}';
+
   Future<API> getApiForAccount(String account) async {
     final instance = account.split('@').last;
     final software = _servers[instance]!.software;
@@ -700,7 +705,7 @@ class AppController with ChangeNotifier {
           // second client would hold a retired token (see ClientCache).
           httpClient = _oauthClients.get(
             account,
-            credentials.refreshToken ?? credentials.accessToken,
+            _oauthFingerprint(credentials),
             () {
               late final oauth2.Client client;
               client = oauth2.Client(
@@ -708,11 +713,15 @@ class AppController with ChangeNotifier {
                 identifier: identifier,
                 onCredentialsRefreshed: (newCredentials) async {
                   // A client replaced by a new sign-in, or whose account was
-                  // removed, must not overwrite the stored login.
+                  // removed, or whose login was replaced and not yet swapped
+                  // out, must not overwrite the stored login.
+                  final stored = _accounts[account]?.oauth;
+                  if (stored == null) return;
                   final current = _oauthClients.rekey(
                     account,
                     client,
-                    newCredentials.refreshToken ?? newCredentials.accessToken,
+                    _oauthFingerprint(stored),
+                    _oauthFingerprint(newCredentials),
                   );
                   if (!current) return;
                   setAccount(
