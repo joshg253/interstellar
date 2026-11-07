@@ -10,8 +10,15 @@ final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
 
 final Set<String> _pendingErrorToasts = {};
 
-void _showSnackBarToast(String message) => scaffoldMessengerKey.currentState
-    ?.showSnackBar(SnackBar(content: Text(message), showCloseIcon: true));
+void _showSnackBarToast(String message) {
+  final messenger = scaffoldMessengerKey.currentState;
+  if (messenger == null) {
+    // Logged, not reported as an error, which would queue another toast.
+    debugPrint('error toast not shown, no messenger: $message');
+    return;
+  }
+  messenger.showSnackBar(SnackBar(content: Text(message), showCloseIcon: true));
+}
 
 /// Shows an error toast; replaceable in tests.
 @visibleForTesting
