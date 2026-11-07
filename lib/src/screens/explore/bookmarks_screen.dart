@@ -165,22 +165,23 @@ class BookmarksScreen extends StatefulWidget {
 }
 
 class _BookmarksScreenState extends State<BookmarksScreen> {
-  late final _pagingController = AdvancedPagingController<String, dynamic, int>(
-    logger: context.read<AppController>().logger,
-    firstPageKey: '',
-    // TODO(jwr1): this is not safe, items of different types (comment, microblog, etc.) could have the same id
-    getItemId: (item) => item.id,
-    fetchPage: (pageKey) async {
-      final ac = context.read<AppController>();
+  late final _pagingController =
+      AdvancedPagingController<String, dynamic, String>(
+        logger: context.read<AppController>().logger,
+        firstPageKey: '',
+        // Posts and comments are numbered separately, so an id alone can collide.
+        getItemId: (item) => '${item.runtimeType}:${item.id}',
+        fetchPage: (pageKey) async {
+          final ac = context.read<AppController>();
 
-      final bookmarks = await ac.api.bookmark.list(
-        page: nullIfEmpty(pageKey),
-        list: widget.bookmarkList,
+          final bookmarks = await ac.api.bookmark.list(
+            page: nullIfEmpty(pageKey),
+            list: widget.bookmarkList,
+          );
+
+          return (bookmarks.$1, bookmarks.$2);
+        },
       );
-
-      return (bookmarks.$1, bookmarks.$2);
-    },
-  );
 
   @override
   Widget build(BuildContext context) {
@@ -201,8 +202,7 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
               clipBehavior: Clip.antiAlias,
               child: PostItem(
                 item,
-                (newValue) =>
-                    _pagingController.updateItem(newValue.id, newValue),
+                (newValue) => _pagingController.updateItem(item, newValue),
                 onTap: () => pushPostPage(
                   context,
                   communityName: item.community.name,
@@ -220,8 +220,7 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
               child: PostComment(
                 item,
-                (newValue) =>
-                    _pagingController.updateItem(newValue.id, newValue),
+                (newValue) => _pagingController.updateItem(item, newValue),
                 onClick: () => context.router.push(
                   PostCommentRoute(postType: item.postType, commentId: item.id),
                 ),

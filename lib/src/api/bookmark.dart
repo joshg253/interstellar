@@ -112,7 +112,35 @@ class APIBookmark {
         );
 
       case ServerSoftware.piefed:
-        throw UnimplementedError('Unimplemented');
+        const postsPath = '/post/list';
+        const commentsPath = '/comment/list';
+
+        final query = {
+          'type_': 'All',
+          'sort': 'New',
+          'page': page,
+          'saved_only': 'true',
+        };
+
+        final [postResponse, commentResponse] = await Future.wait([
+          client.get(postsPath, queryParams: query),
+          client.get(commentsPath, queryParams: query),
+        ]);
+
+        final langCodeIdPairs = await client.languageCodeIdPairs();
+        final postLists = PostListModel.fromPiefed(
+          postResponse.bodyJson,
+          langCodeIdPairs: langCodeIdPairs,
+        );
+        final commentLists = CommentListModel.fromPiefedToFlat(
+          commentResponse.bodyJson,
+          langCodeIdPairs: langCodeIdPairs,
+        );
+
+        return (
+          [...postLists.items, ...commentLists.items],
+          postLists.nextPage ?? commentLists.nextPage,
+        );
     }
   }
 
