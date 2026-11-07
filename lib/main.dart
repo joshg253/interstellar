@@ -37,20 +37,13 @@ void main(List<String> args) async {
     if (details.library == 'image resource service') return;
 
     if (ac.profile.showErrors) {
-      scaffoldMessengerKey.currentState?.showSnackBar(
-        SnackBar(
-          content: Text(details.summary.toString()),
-          showCloseIcon: true,
-        ),
-      );
+      showErrorToast(details.summary.toString());
     }
   };
   PlatformDispatcher.instance.onError = (error, st) {
     ac.logger.e(error, stackTrace: st);
     if (ac.profile.showErrors) {
-      scaffoldMessengerKey.currentState?.showSnackBar(
-        SnackBar(content: Text(error.toString()), showCloseIcon: true),
-      );
+      showErrorToast(error.toString());
     }
     return false;
   };
