@@ -128,7 +128,7 @@ class _UserScreenState extends State<UserScreen> {
       appBar: AppBar(
         title: Text(user.name),
         actions: [
-          if (isMyUser && ac.serverSoftware != ServerSoftware.piefed)
+          if (isMyUser)
             Padding(
               padding: const EdgeInsets.only(right: 8),
               child: ActionChip(
