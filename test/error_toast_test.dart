@@ -36,22 +36,40 @@ void main() {
       ),
     );
 
+    final shown = <String>[];
+    final original = errorToastPresenter;
+    errorToastPresenter = shown.add;
+    addTearDown(() => errorToastPresenter = original);
+
     for (var i = 0; i < 20; i++) {
       showErrorToast('same');
     }
+    showErrorToast('other');
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 500));
 
-    expect(find.text('same'), findsOneWidget);
-    scaffoldMessengerKey.currentState!.clearSnackBars();
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 500));
-    // nothing queued behind it
-    expect(find.text('same'), findsNothing);
+    // one per distinct message; a snackbar count would hide a queue
+    expect(shown, ['same', 'other']);
   });
 }
 
 void errorToastLoopTests() {
+  testWidgets('a toast with no messenger is logged, not lost', (tester) async {
+    final logged = <String>[];
+    final original = debugPrint;
+    debugPrint = (message, {wrapWidth}) => logged.add(message ?? '');
+
+    try {
+      // nothing is mounted, so the messenger key has no state
+      showErrorToast('nowhere');
+      await tester.pump();
+    } finally {
+      // restored here: the test binding checks it before teardown callbacks
+      debugPrint = original;
+    }
+
+    expect(logged.any((line) => line.contains('nowhere')), isTrue);
+  });
+
   testWidgets('a toast that cannot be shown does not report another error', (
     tester,
   ) async {

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:http/http.dart' as http;
 import 'package:interstellar/src/utils/utils.dart';
@@ -11,8 +10,15 @@ final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
 
 final Set<String> _pendingErrorToasts = {};
 
-void _showSnackBarToast(String message) => scaffoldMessengerKey.currentState
-    ?.showSnackBar(SnackBar(content: Text(message), showCloseIcon: true));
+void _showSnackBarToast(String message) {
+  final messenger = scaffoldMessengerKey.currentState;
+  if (messenger == null) {
+    // Logged, not reported as an error, which would queue another toast.
+    debugPrint('error toast not shown, no messenger: $message');
+    return;
+  }
+  messenger.showSnackBar(SnackBar(content: Text(message), showCloseIcon: true));
+}
 
 /// Shows an error toast; replaceable in tests.
 @visibleForTesting
@@ -30,8 +36,11 @@ void showErrorToast(String message) {
     _pendingErrorToasts.remove(message);
     try {
       errorToastPresenter(message);
-    } catch (_) {
-      // the messenger may be gone (e.g. while accounts are switching)
+    } catch (e, st) {
+      // The messenger may be gone (e.g. while accounts are switching). Not
+      // reported as an error, which would queue another toast; debugPrint
+      // does not go through FlutterError.onError.
+      debugPrint('error toast failed: $e\n$st');
     }
   });
   SchedulerBinding.instance.ensureVisualUpdate();
