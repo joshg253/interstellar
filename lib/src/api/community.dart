@@ -179,7 +179,7 @@ class APICommunity {
               ExploreFilter.moderated => 'ModeratorView',
               ExploreFilter.subscribed => 'Subscribed',
               ExploreFilter.blocked => throw Exception(
-                'Can not filter communities by blocked on Lemmy',
+                'Can not filter communities by blocked on PieFed',
               ),
               null => 'All',
             },
@@ -201,7 +201,7 @@ class APICommunity {
               ExploreFilter.moderated => 'ModeratorView',
               ExploreFilter.subscribed => 'Subscribed',
               ExploreFilter.blocked => throw Exception(
-                'Can not filter communities by blocked on Lemmy',
+                'Can not filter communities by blocked on PieFed',
               ),
               null => 'All',
             },
@@ -213,7 +213,17 @@ class APICommunity {
 
           final response = await client.get(path, queryParams: query);
 
-          return DetailedCommunityListModel.fromPiefed(response.bodyJson);
+          final json = response.bodyJson;
+
+          // Search does not always say where the next page is.
+          if (!json.containsKey('next_page')) {
+            json['next_page'] = lemmyCalcNextIntPage(
+              json['communities']! as List<dynamic>,
+              page,
+            );
+          }
+
+          return DetailedCommunityListModel.fromPiefed(json);
         }
     }
   }
