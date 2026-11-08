@@ -328,7 +328,7 @@ class APIThreads {
           path,
           body: {
             'post_id': postId,
-            'name': title,
+            'title': title,
             'body': body,
             'nsfw': isAdult,
           },
