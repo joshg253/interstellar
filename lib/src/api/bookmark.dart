@@ -108,7 +108,7 @@ class APIBookmark {
 
         return (
           [...postLists.items, ...commentLists.items],
-          postLists.nextPage,
+          postLists.nextPage ?? commentLists.nextPage,
         );
 
       case ServerSoftware.piefed:
