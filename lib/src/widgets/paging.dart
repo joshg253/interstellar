@@ -66,6 +66,7 @@ class AdvancedPagingController<PageKeyType, PageItemType, PageItemIdType>
     // so that we only send one notification now and at the end of the method.
     var state = value;
     PageKeyType? newNextPage;
+    var failed = false;
     final newItemIds = <PageItemIdType>{..._itemIds};
 
     try {
@@ -104,6 +105,7 @@ class AdvancedPagingController<PageKeyType, PageItemType, PageItemIdType>
       );
       newNextPage = result.$2;
     } catch (error, st) {
+      failed = true;
       state = state.copyWith(error: error);
       _logger.e(error, stackTrace: st);
 
@@ -119,8 +121,11 @@ class AdvancedPagingController<PageKeyType, PageItemType, PageItemIdType>
           isLoading: false,
           hasNextPage: _nextPage != null,
         );
-        _nextPage = newNextPage;
-        _itemIds = newItemIds;
+        // A failed page keeps its key, so trying again fetches it again.
+        if (!failed) {
+          _nextPage = newNextPage;
+          _itemIds = newItemIds;
+        }
         this.operation = null;
       }
     }
