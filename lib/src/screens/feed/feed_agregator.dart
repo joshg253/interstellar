@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:collection/collection.dart';
+import 'package:flutter/foundation.dart';
 import 'package:interstellar/src/api/feed_source.dart';
 import 'package:interstellar/src/controller/controller.dart';
 import 'package:interstellar/src/controller/feed.dart';
@@ -194,58 +195,73 @@ class FeedInputState {
     required this.title,
     required this.source,
     required this.sourceId,
+    @visibleForTesting this.loadPage,
   });
 
   final String title;
   final FeedSource source;
   final String? sourceId;
+  final Future<PostListModel> Function(
+    String? page,
+    FeedView view,
+    FeedSort sort,
+  )?
+  loadPage;
   List<PostModel> _leftover = [];
-  String? _nextPage = '';
 
+  /// Bumped by a refresh, so a fetch started before it cannot commit.
+  int _generation = 0;
+
+  /// The page key to fetch next, or null when the source is exhausted.
+  String? cursor = '';
+
+  /// Fetches the next page but does not advance the cursor. The caller commits
+  /// the returned page key by setting [cursor] once every source has succeeded, so a
+  /// failed fetch can be retried without skipping this source's posts.
   Future<(List<PostModel>, String?)> fetchPage(
     AppController ac,
     String pageKey,
     FeedView view,
     FeedSort sort,
   ) async {
-    if (_nextPage == null || _leftover.length > 25) {
-      return (_leftover, _nextPage);
+    if (cursor == null || _leftover.length > 25) {
+      return (_leftover, cursor);
     }
 
-    switch (view) {
-      case FeedView.threads:
-        final postListModel = await ac.api.threads.list(
-          source,
-          sourceId: sourceId,
-          page: nullIfEmpty(_nextPage!),
-          sort: sort,
-        );
-        _nextPage = postListModel.nextPage;
-        return ([..._leftover, ...postListModel.items], postListModel.nextPage);
-      case FeedView.microblog:
-        final postListModel = await ac.api.microblogs.list(
-          source,
-          sourceId: sourceId,
-          page: nullIfEmpty(_nextPage!),
-          sort: sort,
-        );
-        _nextPage = postListModel.nextPage;
-        return ([..._leftover, ...postListModel.items], postListModel.nextPage);
-      case FeedView.combined:
-        final postListModel = await ac.api.threads.list(
-          source,
-          sourceId: sourceId,
-          page: nullIfEmpty(_nextPage!),
-          sort: sort,
-          combined: true,
-        );
-        _nextPage = postListModel.nextPage;
-        return ([..._leftover, ...postListModel.items], postListModel.nextPage);
-    }
+    final page = nullIfEmpty(cursor!);
+    final postListModel =
+        await (loadPage?.call(page, view, sort) ??
+            switch (view) {
+              FeedView.threads => ac.api.threads.list(
+                source,
+                sourceId: sourceId,
+                page: page,
+                sort: sort,
+              ),
+              FeedView.microblog => ac.api.microblogs.list(
+                source,
+                sourceId: sourceId,
+                page: page,
+                sort: sort,
+              ),
+              FeedView.combined => ac.api.threads.list(
+                source,
+                sourceId: sourceId,
+                page: page,
+                sort: sort,
+                combined: true,
+              ),
+            });
+    return ([..._leftover, ...postListModel.items], postListModel.nextPage);
   }
 
   FeedInputState clone() {
-    return FeedInputState(title: title, source: source, sourceId: sourceId);
+    return FeedInputState(
+      title: title,
+      source: source,
+      sourceId: sourceId,
+      loadPage: loadPage,
+    );
   }
 }
 
@@ -293,6 +309,7 @@ class FeedAggregator {
   ) async {
     if (inputs.isEmpty) return (<PostModel>[], null);
 
+    final generations = [for (final input in inputs) input._generation];
     final futures = inputs.map(
       (input) => input.fetchPage(ac, pageKey, view, sort),
     );
@@ -302,9 +319,10 @@ class FeedAggregator {
 
     final merged = merge(ac.serverSoftware, postInputs, sort);
 
-    // store leftover posts
+    // leftover posts for the next pass, stored with the cursors below
+    final leftovers = [for (final input in inputs) input._leftover];
     for (final (index, posts) in merged.$2.indexed) {
-      inputs[index]._leftover = posts;
+      leftovers[index] = posts;
     }
 
     // get next page of any remaining inputs
@@ -314,9 +332,7 @@ class FeedAggregator {
     final result = merged.$1;
     // if final page also return all leftover posts
     if (nextPage == null) {
-      for (final input in inputs) {
-        result.addAll(input._leftover);
-      }
+      leftovers.forEach(result.addAll);
     }
 
     // check for read status
@@ -329,6 +345,16 @@ class FeedAggregator {
             ),
           );
 
+    // everything succeeded: advance all cursors and leftovers together, so a
+    // failure above leaves them untouched and a retry refetches the same pages
+    for (final (index, input) in inputs.indexed) {
+      // skip an input that was refreshed while this fetch was in flight
+      if (input._generation != generations[index]) continue;
+      input
+        ..cursor = results[index].$2
+        .._leftover = leftovers[index];
+    }
+
     return (newItems, nextPage);
   }
 
@@ -336,7 +362,8 @@ class FeedAggregator {
     for (final input in inputs) {
       input
         .._leftover = []
-        .._nextPage = '';
+        ..cursor = ''
+        .._generation += 1;
     }
   }
 
