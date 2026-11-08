@@ -211,7 +211,11 @@ class _CommunityOwnerPanelGeneralState
 
                     await descriptionDraftController.discard();
 
-                    widget.onUpdate(result);
+                    widget.onUpdate(
+                      widget.data == null
+                          ? result
+                          : result.keepingModeratorsOf(widget.data!),
+                    );
                   },
             label: Text(l(context).save),
           ),

@@ -49,7 +49,11 @@ Future<void> showCommunityMenu(
             );
 
             if (update != null) {
-              update(newValue);
+              update(
+                detailedCommunity == null
+                    ? newValue
+                    : newValue.keepingModeratorsOf(detailedCommunity),
+              );
             }
           },
           followMode: false,
@@ -65,7 +69,11 @@ Future<void> showCommunityMenu(
                 !(detailedCommunity?.isBlockedByUser ?? false),
               );
               if (update != null) {
-                update(newValue);
+                update(
+                  detailedCommunity == null
+                      ? newValue
+                      : newValue.keepingModeratorsOf(detailedCommunity),
+                );
               }
             },
             icon: const Icon(Symbols.block_rounded),
