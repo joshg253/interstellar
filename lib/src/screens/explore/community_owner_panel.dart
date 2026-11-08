@@ -1,6 +1,7 @@
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:interstellar/src/controller/controller.dart';
+import 'package:interstellar/src/controller/server.dart';
 import 'package:interstellar/src/models/community.dart';
 import 'package:interstellar/src/models/user.dart';
 import 'package:interstellar/src/screens/explore/user_item.dart';
@@ -240,6 +241,13 @@ class _CommunityOwnerPanelModeratorsState
 
   @override
   Widget build(BuildContext context) {
+    // PieFed has no endpoint to add or remove moderators.
+    if (context.read<AppController>().serverSoftware == ServerSoftware.piefed) {
+      return const Center(
+        child: Text('Managing moderators is not available on PieFed.'),
+      );
+    }
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -319,7 +327,7 @@ class _CommunityOwnerPanelModeratorsState
               IconButton(
                 icon: const Icon(Symbols.delete_outline_rounded),
                 onPressed: () async {
-                  final result = await showDialog<DetailedCommunityModel>(
+                  final result = await showDialog<List<UserModel>>(
                     context: context,
                     builder: (context) => AlertDialog(
                       title: const Text('Remove moderator'),
@@ -357,7 +365,9 @@ class _CommunityOwnerPanelModeratorsState
                     ),
                   );
 
-                  if (result != null) widget.onUpdate(result);
+                  if (result != null) {
+                    widget.onUpdate(widget.data.copyWith(moderators: result));
+                  }
                 },
               ),
             ],
@@ -386,6 +396,13 @@ class _CommunityOwnerPanelDeletionState
     extends State<CommunityOwnerPanelDeletion> {
   @override
   Widget build(BuildContext context) {
+    // Neither action is implemented for Lemmy yet.
+    if (context.read<AppController>().serverSoftware == ServerSoftware.lemmy) {
+      return const Center(
+        child: Text('Removing the icon or deleting is not available on Lemmy.'),
+      );
+    }
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [

@@ -405,7 +405,10 @@ class APICommunityModeration {
       case ServerSoftware.piefed:
         const path = '/community';
 
-        final response = await client.put(path, body: {'icon_url': ''});
+        final response = await client.put(
+          path,
+          body: {'community_id': communityId, 'icon_url': ''},
+        );
 
         return;
     }
