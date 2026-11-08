@@ -123,6 +123,8 @@ class _ExploreScreenState extends State<ExploreScreen> {
           final newPage = await ac.api.search.get(
             page: nullIfEmpty(pageKey),
             search: _searchController.text,
+            // The filter chip does not apply inside a community or user
+            filter: widget.id == null ? filter : null,
             userId: type == ExploreType.people ? widget.id : null,
             communityId: type == ExploreType.communities ? widget.id : null,
           );
@@ -348,8 +350,12 @@ class _ExploreScreenState extends State<ExploreScreen> {
                                               ServerSoftware.mbin ||
                                           ac.serverSoftware !=
                                                   ServerSoftware.mbin &&
-                                              filter ==
-                                                  ExploreFilter.subscribed) {
+                                              (filter ==
+                                                      ExploreFilter
+                                                          .subscribed ||
+                                                  filter ==
+                                                      ExploreFilter
+                                                          .moderated)) {
                                         filter = ExploreFilter.all;
                                       }
 
@@ -577,7 +583,7 @@ SelectionMenu<ExploreFilter> exploreFilterSelection(
         if (type != ExploreType.domains &&
             (context.read<AppController>().serverSoftware ==
                     ServerSoftware.mbin ||
-                type != ExploreType.people))
+                (type != ExploreType.people && type != ExploreType.all)))
           SelectionMenuItem(
             value: ExploreFilter.moderated,
             title: type == ExploreType.people
