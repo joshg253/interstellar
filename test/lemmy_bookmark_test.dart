@@ -52,10 +52,12 @@ Future<(List<Object>, String?)> _list({
       body = {'all_languages': <Object?>[]};
     } else if (path.endsWith('/post/list')) {
       body = {'posts': <Object?>[]};
-    } else {
+    } else if (path.endsWith('/comment/list')) {
       body = {
         'comments': hasComments ? [_comment] : <Object?>[],
       };
+    } else {
+      fail('unexpected request to $path');
     }
     return http.Response(
       jsonEncode(body),
