@@ -64,6 +64,8 @@ Future<void> _pump(
 );
 
 void main() {
+  groupAfterEdit();
+
   group('deletion tab', () {
     final tab = CommunityOwnerPanelDeletion(data: _community, onUpdate: (_) {});
 
@@ -111,5 +113,33 @@ void main() {
         expect(find.byIcon(Symbols.delete_outline_rounded), findsOneWidget);
       });
     }
+  });
+}
+
+void groupAfterEdit() {
+  group('keepingModeratorsOf (edit, subscribe, block)', () {
+    final saved = _community.copyWith(
+      title: 'New title',
+      owner: null,
+      moderators: [],
+    );
+
+    test('keeps the moderators and owner an edit response leaves out', () {
+      final old = _community.copyWith(owner: _community.moderators.first);
+
+      final merged = saved.keepingModeratorsOf(old);
+
+      expect(merged.title, 'New title');
+      expect(merged.moderators, old.moderators);
+      expect(merged.owner, old.owner);
+    });
+
+    test('takes the response when it has moderators', () {
+      final fresh = _community.copyWith(
+        moderators: [_community.moderators.first.copyWith(name: 'other')],
+      );
+
+      expect(fresh.keepingModeratorsOf(_community), fresh);
+    });
   });
 }

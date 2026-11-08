@@ -448,3 +448,13 @@ abstract class CommunityReportModel with _$CommunityReportModel {
     );
   }
 }
+
+extension DetailedCommunityModelMerge on DetailedCommunityModel {
+  /// Lemmy and PieFed answer an edit, subscribe or block without the
+  /// moderators, which would empty the Moderators tab and drop the owner:
+  /// keep the ones [old] had.
+  DetailedCommunityModel keepingModeratorsOf(DetailedCommunityModel old) =>
+      moderators.isEmpty
+      ? copyWith(moderators: old.moderators, owner: old.owner)
+      : this;
+}

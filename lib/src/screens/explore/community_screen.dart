@@ -108,9 +108,9 @@ class _CommunityScreenState extends State<CommunityScreen> {
                               );
 
                               setState(() {
-                                _data = newValue;
+                                _data = newValue.keepingModeratorsOf(_data!);
                               });
-                              widget.onUpdate?.call(newValue);
+                              widget.onUpdate?.call(_data!);
                             },
                             followMode: false,
                           ),
@@ -124,9 +124,9 @@ class _CommunityScreenState extends State<CommunityScreen> {
                                 );
 
                                 setState(() {
-                                  _data = newValue;
+                                  _data = newValue.keepingModeratorsOf(_data!);
                                 });
-                                widget.onUpdate?.call(newValue);
+                                widget.onUpdate?.call(_data!);
                               },
                               icon: const Icon(Symbols.block_rounded),
                               style: ButtonStyle(
