@@ -213,10 +213,10 @@ class FeedInputState {
   int _generation = 0;
 
   /// The page key to fetch next, or null when the source is exhausted.
-  String? cursor = '';
+  String? _cursor = '';
 
   /// Fetches the next page but does not advance the cursor. The caller commits
-  /// the returned page key by setting [cursor] once every source has succeeded, so a
+  /// the returned page key with [commit] once every source has succeeded, so a
   /// failed fetch can be retried without skipping this source's posts.
   Future<(List<PostModel>, String?)> fetchPage(
     AppController ac,
@@ -224,11 +224,11 @@ class FeedInputState {
     FeedView view,
     FeedSort sort,
   ) async {
-    if (cursor == null || _leftover.length > 25) {
-      return (_leftover, cursor);
+    if (_cursor == null || _leftover.length > 25) {
+      return (_leftover, _cursor);
     }
 
-    final page = nullIfEmpty(cursor!);
+    final page = nullIfEmpty(_cursor!);
     final postListModel =
         await (loadPage?.call(page, view, sort) ??
             switch (view) {
@@ -253,6 +253,12 @@ class FeedInputState {
               ),
             });
     return ([..._leftover, ...postListModel.items], postListModel.nextPage);
+  }
+
+  /// Sets the page key and the leftover posts together.
+  void commit(String? nextPage, List<PostModel> leftover) {
+    _cursor = nextPage;
+    _leftover = leftover;
   }
 
   FeedInputState clone() {
@@ -350,9 +356,7 @@ class FeedAggregator {
     for (final (index, input) in inputs.indexed) {
       // skip an input that was refreshed while this fetch was in flight
       if (input._generation != generations[index]) continue;
-      input
-        ..cursor = results[index].$2
-        .._leftover = leftovers[index];
+      input.commit(results[index].$2, leftovers[index]);
     }
 
     return (newItems, nextPage);
@@ -362,7 +366,7 @@ class FeedAggregator {
     for (final input in inputs) {
       input
         .._leftover = []
-        ..cursor = ''
+        .._cursor = ''
         .._generation += 1;
     }
   }

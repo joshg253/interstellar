@@ -56,7 +56,7 @@ void main() {
       FeedView.threads,
       FeedSort.hot,
     );
-    input.cursor = next;
+    input.commit(next, []);
     await input.fetchPage(_NoController(), '', FeedView.threads, FeedSort.hot);
 
     expect(requested, [null, '2']);
