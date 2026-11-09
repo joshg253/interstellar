@@ -46,7 +46,19 @@ class APICommunityModeration {
           langCodeIdPairs: await client.languageCodeIdPairs(),
         );
       case ServerSoftware.piefed:
-        throw UnimplementedError('Not yet implemented');
+        final response = await client.get(
+          '/post/report/list',
+          queryParams: {
+            'page': page,
+            'community_id': communityId.toString(),
+            'unresolved_only': (status == ReportStatus.pending).toString(),
+          },
+        );
+
+        return CommunityReportListModel.fromPiefed(
+          response.bodyJson,
+          langCodeIdPairs: await client.languageCodeIdPairs(),
+        );
     }
   }
 
@@ -85,7 +97,20 @@ class APICommunityModeration {
         );
 
       case ServerSoftware.piefed:
-        throw UnimplementedError('Not yet implemented');
+        await client.post(
+          '/post/remove',
+          body: {'post_id': postId, 'removed': true, 'reason': 'Moderated'},
+        );
+
+        final response = await client.put(
+          '/post/report/resolve',
+          body: {'report_id': reportId, 'resolved': true},
+        );
+
+        return CommunityReportModel.fromPiefed(
+          response.bodyJson['post_report_view']! as JsonMap,
+          langCodeIdPairs: await client.languageCodeIdPairs(),
+        );
     }
   }
 
@@ -124,7 +149,20 @@ class APICommunityModeration {
         );
 
       case ServerSoftware.piefed:
-        throw UnimplementedError('Not yet implemented');
+        await client.post(
+          '/post/remove',
+          body: {'post_id': postId, 'removed': false, 'reason': 'Moderated'},
+        );
+
+        final response = await client.put(
+          '/post/report/resolve',
+          body: {'report_id': reportId, 'resolved': true},
+        );
+
+        return CommunityReportModel.fromPiefed(
+          response.bodyJson['post_report_view']! as JsonMap,
+          langCodeIdPairs: await client.languageCodeIdPairs(),
+        );
     }
   }
 
