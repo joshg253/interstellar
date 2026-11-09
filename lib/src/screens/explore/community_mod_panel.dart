@@ -59,7 +59,7 @@ class _CommunityModPanelScreenState extends State<CommunityModPanelScreen> {
     }
 
     return DefaultTabController(
-      length: ac.serverSoftware == ServerSoftware.mbin ? 2 : 1,
+      length: ac.serverSoftware == ServerSoftware.lemmy ? 1 : 2,
       child: Scaffold(
         appBar: AppBar(
           title: Text('Mod Panel for ${widget.initData.name}'),
@@ -67,8 +67,7 @@ class _CommunityModPanelScreenState extends State<CommunityModPanelScreen> {
             tabs: [
               if (ac.serverSoftware != ServerSoftware.lemmy)
                 const Tab(text: 'Bans'),
-              if (ac.serverSoftware != ServerSoftware.piefed)
-                const Tab(text: 'Reports'),
+              const Tab(text: 'Reports'),
             ],
           ),
         ),
@@ -77,8 +76,7 @@ class _CommunityModPanelScreenState extends State<CommunityModPanelScreen> {
           children: <Widget>[
             if (ac.serverSoftware != ServerSoftware.lemmy)
               CommunityModPanelBans(data: _data, onUpdate: onUpdate),
-            if (ac.serverSoftware != ServerSoftware.piefed)
-              CommunityModPanelReports(data: _data, onUpdate: onUpdate),
+            CommunityModPanelReports(data: _data, onUpdate: onUpdate),
           ],
         ),
       ),

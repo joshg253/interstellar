@@ -343,6 +343,21 @@ abstract class CommunityReportListModel with _$CommunityReportListModel {
         .toList(),
     nextPage: json['next_page'] as String?,
   );
+
+  factory CommunityReportListModel.fromPiefed(
+    JsonMap json, {
+    required List<(String, int)> langCodeIdPairs,
+  }) => CommunityReportListModel(
+    items: (json['post_reports']! as List<dynamic>)
+        .map(
+          (item) => CommunityReportModel.fromPiefed(
+            item as JsonMap,
+            langCodeIdPairs: langCodeIdPairs,
+          ),
+        )
+        .toList(),
+    nextPage: json['next_page'] as String?,
+  );
 }
 
 @freezed
@@ -444,6 +459,51 @@ abstract class CommunityReportModel with _$CommunityReportModel {
       consideredBy: json['resolver'] != null
           ? UserModel.fromLemmy(json['resolver']! as JsonMap)
           : null,
+      weight: null,
+    );
+  }
+
+  /// A PieFed post report view. Its `creator` is the reporter, so the post is
+  /// parsed with `post_creator` as its author.
+  factory CommunityReportModel.fromPiefed(
+    JsonMap json, {
+    required List<(String, int)> langCodeIdPairs,
+  }) {
+    final report = json['post_report']! as JsonMap;
+
+    final postJson = json['post'] as JsonMap?;
+
+    // PostModel.fromPiefed does not read the removed state, but the panel
+    // and the report status need it. A moderator's removal wins over the
+    // author's deletion: it is what accepting a report does.
+    final subjectPost = postJson == null
+        ? null
+        : PostModel.fromPiefed({
+            'post_view': {...json, 'creator': json['post_creator']! as JsonMap},
+          }, langCodeIdPairs: langCodeIdPairs).copyWith(
+            visibility: (postJson['removed'] as bool?) ?? false
+                ? PostVisibility.trashed
+                : (postJson['deleted'] as bool?) ?? false
+                ? PostVisibility.soft_deleted
+                : PostVisibility.visible,
+          );
+
+    return CommunityReportModel(
+      id: report['id']! as int,
+      community: CommunityModel.fromPiefed(json['community']! as JsonMap),
+      reportedBy: UserModel.fromPiefed(json['creator']! as JsonMap),
+      reportedUser: UserModel.fromPiefed(json['post_creator']! as JsonMap),
+      subjectPost: subjectPost,
+      subjectComment: null,
+      reason: report['reason'] as String?,
+      status: !(report['resolved']! as bool)
+          ? ReportStatus.pending
+          : subjectPost?.visibility == PostVisibility.trashed
+          ? ReportStatus.approved
+          : ReportStatus.rejected,
+      createdAt: optionalDateTime(report['published'] as String?),
+      consideredAt: null,
+      consideredBy: null,
       weight: null,
     );
   }
