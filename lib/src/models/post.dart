@@ -176,11 +176,7 @@ abstract class PostModel with _$PostModel {
     flairs: [],
     poll: null,
     event: null,
-    apId: mbinFallbackApId(
-      json['apId'] as String?,
-      (json['magazine'] as JsonMap?)?['apProfileId'] as String?,
-      '/t/${json['entryId']}',
-    ),
+    apId: json['apId'] as String?,
     emojiReactions: null,
     tags: optionalStringList(json['tags']) ?? [],
   );
@@ -224,11 +220,7 @@ abstract class PostModel with _$PostModel {
     flairs: [],
     poll: null,
     event: null,
-    apId: mbinFallbackApId(
-      json['apId'] as String?,
-      (json['magazine'] as JsonMap?)?['apProfileId'] as String?,
-      '/p/${json['postId']}',
-    ),
+    apId: json['apId'] as String?,
     emojiReactions: null,
   );
 
