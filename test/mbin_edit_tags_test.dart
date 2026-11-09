@@ -45,6 +45,11 @@ void main() {
       'extra',
     ]);
     expect(mbinExplicitTags(['a'], null), ['a']);
+    // Mbin's own rule: Unicode letters, at least two characters, not mid-word.
+    expect(
+      mbinExplicitTags(['café', 'foo', 'ab', 'x'], '#café #foo-bar word#ab #x'),
+      ['ab', 'x'],
+    );
   });
 
   test('Mbin entries keep their tags', () {

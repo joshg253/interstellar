@@ -30,12 +30,19 @@ const Map<FeedSort, String> lemmyFeedSortMap = {
   FeedSort.scaled: 'Scaled',
 };
 
+// Mbin's own hashtag rule (RegPatterns::LOCAL_TAG): not mid-word, Unicode
+// word characters, at least two of them.
+final _mbinHashtag = RegExp(
+  r'(?<![\p{L}\p{N}_])#([\p{L}\p{N}_][\p{L}\p{N}_\p{M}·・]+)',
+  unicode: true,
+);
+
 /// The [tags] of an Mbin thread that [body] does not already carry as a
 /// `#hashtag`. Mbin adds the body's hashtags itself on every edit, so sending
 /// those back would keep one the user has removed from the body.
 List<String> mbinExplicitTags(List<String> tags, String? body) {
   final inBody = {
-    for (final m in RegExp(r'#(\w+)').allMatches(body ?? ''))
+    for (final m in _mbinHashtag.allMatches(body ?? ''))
       m.group(1)!.toLowerCase(),
   };
   return tags.where((tag) => !inBody.contains(tag.toLowerCase())).toList();
