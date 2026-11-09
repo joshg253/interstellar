@@ -210,7 +210,7 @@ class _PostItemState extends State<PostItem> {
                     ),
                   );
                 },
-          onModerateMarkNSFW: !canModerate
+          onModerateMarkNSFW: !canModerate || !ac.api.moderation.canMarkNSFW
               ? null
               : () async {
                   widget.onUpdate(

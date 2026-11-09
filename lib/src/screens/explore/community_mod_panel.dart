@@ -285,14 +285,15 @@ class _CommunityModReportState extends State<CommunityModReport> {
             !widget.report.subjectPost!.isPinned,
           ),
         ),
-        ContextMenuItem(
-          title: l(context).notSafeForWork_mark,
-          onTap: () async => ac.api.moderation.postMarkNSFW(
-            widget.report.subjectPost!.type,
-            widget.report.subjectPost!.id,
-            !widget.report.subjectPost!.isNSFW,
+        if (ac.api.moderation.canMarkNSFW)
+          ContextMenuItem(
+            title: l(context).notSafeForWork_mark,
+            onTap: () async => ac.api.moderation.postMarkNSFW(
+              widget.report.subjectPost!.type,
+              widget.report.subjectPost!.id,
+              !widget.report.subjectPost!.isNSFW,
+            ),
           ),
-        ),
         ContextMenuItem(
           title: l(context).delete,
           onTap: () async => ac.api.moderation.postDelete(

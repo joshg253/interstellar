@@ -272,7 +272,7 @@ class _PostPageState extends State<PostPage> {
                 ),
               );
             },
-      onModerateMarkNSFW: !canModerate
+      onModerateMarkNSFW: !canModerate || !ac.api.moderation.canMarkNSFW
           ? null
           : () async {
               _updateCrossPost(

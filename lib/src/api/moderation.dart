@@ -103,6 +103,10 @@ class APIModeration {
 
   final ServerClient client;
 
+  /// Lemmy only lets a post's author change NSFW (EditPost), so [postMarkNSFW]
+  /// would only throw for a moderator.
+  bool get canMarkNSFW => client.software != ServerSoftware.lemmy;
+
   Future<PostModel> postPin(PostType postType, int postId, bool pinned) async {
     switch (client.software) {
       case ServerSoftware.mbin:
