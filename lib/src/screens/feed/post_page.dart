@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:interstellar/src/api/bookmark.dart';
 import 'package:interstellar/src/api/comments.dart';
 import 'package:interstellar/src/api/notifications.dart';
+import 'package:interstellar/src/api/threads.dart';
 import 'package:interstellar/src/controller/controller.dart';
 import 'package:interstellar/src/controller/router.gr.dart';
 import 'package:interstellar/src/controller/server.dart';
@@ -523,6 +524,7 @@ class _PostPageState extends State<PostPage> {
                               body,
                               post.lang,
                               post.isNSFW,
+                              tags: mbinExplicitTags(post.tags, post.body),
                             ),
                             PostType.microblog => ac.api.microblogs.edit(
                               post.id,
