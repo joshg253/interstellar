@@ -8,7 +8,12 @@ import 'package:interstellar/src/api/community_moderation.dart';
 import 'package:interstellar/src/controller/server.dart';
 
 void main() {
-  for (final added in [true, false]) {
+  // What the community lists afterwards: another moderator stays, and user 9
+  // is there only after being added.
+  for (final (added, listed) in [
+    (true, [3, 9]),
+    (false, [3]),
+  ]) {
     test(
       'PieFed updateModerator added=$added posts the spec body and reads the list back',
       () async {
@@ -40,16 +45,17 @@ void main() {
                   'subscribed': 'NotSubscribed',
                 },
                 'moderators': [
-                  {
-                    'moderator': {
-                      'id': 9,
-                      'user_name': 'mod',
-                      'local': true,
-                      'bot': false,
-                      'published': '2025-01-01T00:00:00Z',
-                      'actor_id': 'https://example.com/u/mod',
+                  for (final id in listed)
+                    {
+                      'moderator': {
+                        'id': id,
+                        'user_name': 'mod$id',
+                        'local': true,
+                        'bot': false,
+                        'published': '2025-01-01T00:00:00Z',
+                        'actor_id': 'https://example.com/u/mod$id',
+                      },
                     },
-                  },
                 ],
               }),
               200,
@@ -74,7 +80,7 @@ void main() {
         expect(requests[1].method, 'GET');
         expect(requests[1].url.path, endsWith('/community'));
         expect(requests[1].url.queryParameters, {'id': '7'});
-        expect(mods.map((m) => m.id), [9]);
+        expect(mods.map((m) => m.id), listed);
       },
     );
   }
