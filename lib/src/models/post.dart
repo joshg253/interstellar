@@ -124,6 +124,8 @@ abstract class PostModel with _$PostModel {
     required EventModel? event,
     required String? apId,
     required List<EmojiReactionModel>? emojiReactions,
+    // Only Mbin threads have these; sent back on edit so they aren't cleared.
+    @Default(<String>[]) List<String> tags,
   }) = _PostModel;
 
   factory PostModel.fromMbinEntry(JsonMap json) => PostModel(
@@ -174,12 +176,9 @@ abstract class PostModel with _$PostModel {
     flairs: [],
     poll: null,
     event: null,
-    apId: mbinFallbackApId(
-      json['apId'] as String?,
-      (json['magazine'] as JsonMap?)?['apProfileId'] as String?,
-      '/t/${json['entryId']}',
-    ),
+    apId: json['apId'] as String?,
     emojiReactions: null,
+    tags: optionalStringList(json['tags']) ?? [],
   );
 
   factory PostModel.fromMbinPost(JsonMap json) => PostModel(
@@ -221,11 +220,7 @@ abstract class PostModel with _$PostModel {
     flairs: [],
     poll: null,
     event: null,
-    apId: mbinFallbackApId(
-      json['apId'] as String?,
-      (json['magazine'] as JsonMap?)?['apProfileId'] as String?,
-      '/p/${json['postId']}',
-    ),
+    apId: json['apId'] as String?,
     emojiReactions: null,
   );
 

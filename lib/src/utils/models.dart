@@ -43,9 +43,34 @@ String getLemmyPiefedActorName(JsonMap json) {
 String? lemmyCalcNextIntPage(List<dynamic> list, String? currentPage) =>
     list.isEmpty ? null : (int.parse(currentPage ?? '1') + 1).toString();
 
-/// Mbin returns no `apId` for its own content, yet other servers know it by
-/// the magazine's profile URL plus a fixed path (`/t/<id>` for threads, `/p/<id>`
-/// for microblogs). Building that id lets the copy seen through an mbin account
-/// match the same item seen through other accounts.
-String? mbinFallbackApId(String? apId, String? magazineProfile, String path) =>
-    apId ?? (magazineProfile == null ? null : '$magazineProfile$path');
+/// Fills the `apId` Mbin leaves out for its own threads, microblogs and
+/// comments, walking [json] (a response body) in place. [origin] is the
+/// server the response came from (`https://host`); other servers know the item
+/// as `<origin>/m/<magazine>/...`, whether the magazine is local or remote.
+void fillMbinApIds(Object? json, String origin) {
+  if (json is List) {
+    for (final e in json) {
+      fillMbinApIds(e, origin);
+    }
+  } else if (json is Map) {
+    final magazine = json['magazine'];
+    if (json['apId'] == null &&
+        magazine is Map &&
+        magazine['magazineId'] != null &&
+        magazine['name'] is String) {
+      final base = '$origin/m/${magazine['name']}';
+      if (json['commentId'] != null) {
+        json['apId'] = json['postId'] != null
+            ? '$base/p/${json['postId']}/-/reply/${json['commentId']}'
+            : '$base/t/${json['entryId']}/-/comment/${json['commentId']}';
+      } else if (json['entryId'] != null) {
+        json['apId'] = '$base/t/${json['entryId']}';
+      } else if (json['postId'] != null) {
+        json['apId'] = '$base/p/${json['postId']}';
+      }
+    }
+    for (final e in json.values) {
+      fillMbinApIds(e, origin);
+    }
+  }
+}

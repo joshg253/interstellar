@@ -168,13 +168,7 @@ abstract class CommentModel with _$CommentModel {
     canAuthUserModerate: json['canAuthUserModerate'] as bool?,
     notificationControlStatus: null,
     bookmarks: optionalStringList(json['bookmarks']),
-    apId: mbinFallbackApId(
-      json['apId'] as String?,
-      (json['magazine'] as JsonMap?)?['apProfileId'] as String?,
-      json['postId'] != null
-          ? '/p/${json['postId']}/-/reply/${json['commentId']}'
-          : '/t/${json['entryId']}/-/comment/${json['commentId']}',
-    ),
+    apId: json['apId'] as String?,
     emojiReactions: null,
   );
 

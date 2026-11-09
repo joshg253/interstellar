@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:interstellar/src/controller/server.dart';
+import 'package:interstellar/src/utils/models.dart';
 import 'package:interstellar/src/utils/utils.dart';
 import 'package:mime/mime.dart';
 import 'package:path/path.dart';
@@ -215,6 +216,9 @@ class ServerClient {
 extension BodyJson on http.Response {
   JsonMap get bodyJson {
     // Force utf8 decoding due to Lemmy not providing correct content type headers (https://github.com/interstellar-app/interstellar/pull/50)
-    return jsonDecode(utf8.decode(bodyBytes)) as JsonMap;
+    final json = jsonDecode(utf8.decode(bodyBytes)) as JsonMap;
+    final url = request?.url;
+    if (url != null) fillMbinApIds(json, url.origin);
+    return json;
   }
 }
