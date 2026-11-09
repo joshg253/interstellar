@@ -45,10 +45,23 @@ jobs:
         with:
           flutter-version-file: pubspec.yaml
 
+      # Cache the Gradle wrapper and dependencies, so a flaky download doesn't fail the build.
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          # Pull request runs save the cache too, so one good download is kept.
+          cache-read-only: false
+
+      # Retry, as the Gradle and Maven downloads sometimes fail with a 504.
       - name: Build Flutter app
         run: |
           dart run build_runner build
-          flutter build -v apk --split-per-abi
+          for attempt in 1 2 3 4 5; do
+            flutter build -v apk --split-per-abi && exit 0
+            echo "Build failed (attempt $attempt of 5), retrying in $((attempt * 60)) seconds."
+            sleep $((attempt * 60))
+          done
+          exit 1
 
   test-linux-build:
     name: Test linux build
