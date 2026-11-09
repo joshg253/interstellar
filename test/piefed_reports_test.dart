@@ -64,7 +64,11 @@ Map<String, Object?> _reportView({
   'saved': false,
 };
 
-ServerClient _client(List<http.Request> requests, {bool listRemoved = false}) {
+ServerClient _client(
+  List<http.Request> requests, {
+  bool listRemoved = false,
+  bool listDeleted = false,
+}) {
   var removed = listRemoved;
   return ServerClient(
     httpClient: MockClient((request) async {
@@ -86,7 +90,11 @@ ServerClient _client(List<http.Request> requests, {bool listRemoved = false}) {
         return http.Response(
           jsonEncode({
             'post_reports': [
-              _reportView(resolved: listRemoved, removed: listRemoved),
+              _reportView(
+                resolved: listRemoved,
+                removed: listRemoved,
+                deleted: listDeleted,
+              ),
             ],
             'next_page': '2',
           }),
@@ -149,7 +157,17 @@ void main() {
             ? await moderation.acceptReport(7, 5, 11)
             : await moderation.rejectReport(7, 5, 11);
 
-        final calls = requests.where((r) => !r.url.path.endsWith('/site'));
+        final calls = requests
+            .where((r) => !r.url.path.endsWith('/site'))
+            .toList();
+        // The post is changed before the report is resolved.
+        expect(
+          [
+            for (final r in calls)
+              '${r.method} ${r.url.path.split('/api/alpha').last}',
+          ],
+          ['POST /post/remove', 'PUT /post/report/resolve'],
+        );
         final bodies = {
           for (final r in calls)
             r.url.path.split('/api/alpha').last: jsonDecode(r.body),
@@ -175,6 +193,15 @@ void main() {
       },
     );
   }
+
+  test('a post both removed and deleted still reads as approved', () async {
+    final list = await APICommunityModeration(
+      _client([], listRemoved: true, listDeleted: true),
+    ).listReports(7, status: ReportStatus.approved);
+
+    expect(list.items.single.status, ReportStatus.approved);
+    expect(list.items.single.subjectPost!.visibility, PostVisibility.trashed);
+  });
 
   test('a resolved report whose post was removed reads as approved', () async {
     final list = await APICommunityModeration(

@@ -474,16 +474,17 @@ abstract class CommunityReportModel with _$CommunityReportModel {
     final postJson = json['post'] as JsonMap?;
 
     // PostModel.fromPiefed does not read the removed state, but the panel
-    // and the report status need it.
+    // and the report status need it. A moderator's removal wins over the
+    // author's deletion: it is what accepting a report does.
     final subjectPost = postJson == null
         ? null
         : PostModel.fromPiefed({
             'post_view': {...json, 'creator': json['post_creator']! as JsonMap},
           }, langCodeIdPairs: langCodeIdPairs).copyWith(
-            visibility: (postJson['deleted'] as bool?) ?? false
-                ? PostVisibility.soft_deleted
-                : (postJson['removed'] as bool?) ?? false
+            visibility: (postJson['removed'] as bool?) ?? false
                 ? PostVisibility.trashed
+                : (postJson['deleted'] as bool?) ?? false
+                ? PostVisibility.soft_deleted
                 : PostVisibility.visible,
           );
 
