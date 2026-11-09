@@ -386,7 +386,22 @@ class APICommunityModeration {
             .toList();
 
       case ServerSoftware.piefed:
-        throw UnimplementedError();
+        await client.post(
+          '/community/mod',
+          body: {
+            'community_id': communityId,
+            'person_id': userId,
+            'added': state,
+          },
+        );
+
+        // The response shape is not relied on; read the list back.
+        final response = await client.get(
+          '/community',
+          queryParams: {'id': communityId.toString()},
+        );
+
+        return DetailedCommunityModel.fromPiefed(response.bodyJson).moderators;
     }
   }
 

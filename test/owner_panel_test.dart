@@ -95,17 +95,11 @@ void main() {
       onUpdate: (_) {},
     );
 
-    testWidgets('PieFed cannot manage moderators, so no add control', (
-      tester,
-    ) async {
-      await _pump(tester, ServerSoftware.piefed, tab);
-
-      expect(find.text('Add'), findsNothing);
-      expect(find.byIcon(Symbols.delete_outline_rounded), findsNothing);
-      expect(find.textContaining('not available on PieFed'), findsOneWidget);
-    });
-
-    for (final software in [ServerSoftware.mbin, ServerSoftware.lemmy]) {
+    for (final software in [
+      ServerSoftware.mbin,
+      ServerSoftware.lemmy,
+      ServerSoftware.piefed,
+    ]) {
       testWidgets('$software keeps the add control', (tester) async {
         await _pump(tester, software, tab);
 

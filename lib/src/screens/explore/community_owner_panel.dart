@@ -245,13 +245,6 @@ class _CommunityOwnerPanelModeratorsState
 
   @override
   Widget build(BuildContext context) {
-    // PieFed has no endpoint to add or remove moderators.
-    if (context.read<AppController>().serverSoftware == ServerSoftware.piefed) {
-      return const Center(
-        child: Text('Managing moderators is not available on PieFed.'),
-      );
-    }
-
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
