@@ -62,6 +62,8 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
   CrossAccountFeed<PostModel>? _feed;
   bool _loading = false;
   Object? _setupError;
+  // The skip notice the user closed (its text names the accounts and source).
+  String? _dismissedSkip;
   late FeedSource _filter;
   late FeedSort _sort;
   // Set by the filter sheet or the floating menu; null follows the settings.
@@ -514,9 +516,13 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
                 '${isAccountSignedIn(ac, account) ? account : '${account.split('@').last} (guest)'}'
                     ' has no ${_filter.title(context)} feed',
           ];
-    // retrying cannot help with the skipped ones
-    final canRetry = problems.isNotEmpty;
-    problems.addAll(skipped);
+    // closed by the user; a different skipped set shows it again
+    final skipText = skipped.join('\n');
+    if (skipText != _dismissedSkip) _dismissedSkip = null;
+    final skipNotice = skipped.isEmpty || _dismissedSkip != null
+        ? null
+        : skipText;
+    final headers = (problems.isEmpty ? 0 : 1) + (skipNotice == null ? 0 : 1);
     final hideRead = _effectiveHideRead(ac);
     final visible = _visible(ac);
     // The same actions as the regular feed, placed where the profile says.
@@ -655,20 +661,29 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
           child: ListView.builder(
             controller: _scroll,
             physics: const AlwaysScrollableScrollPhysics(),
-            itemCount: visible.length + 1 + (problems.isEmpty ? 0 : 1),
+            itemCount: visible.length + 1 + headers,
             itemBuilder: (context, index) {
               if (problems.isNotEmpty && index == 0) {
                 return MaterialBanner(
                   content: Text(problems.join('\n')),
                   actions: [
-                    if (canRetry)
-                      TextButton(onPressed: _reset, child: const Text('Retry'))
-                    else
-                      const SizedBox.shrink(),
+                    TextButton(onPressed: _reset, child: const Text('Retry')),
                   ],
                 );
               }
-              final i = index - (problems.isEmpty ? 0 : 1);
+              if (skipNotice != null && index == headers - 1) {
+                return MaterialBanner(
+                  content: Text(skipNotice),
+                  actions: [
+                    TextButton(
+                      onPressed: () =>
+                          setState(() => _dismissedSkip = skipNotice),
+                      child: const Text('Dismiss'),
+                    ),
+                  ],
+                );
+              }
+              final i = index - headers;
               if (i == visible.length) {
                 if (_setupError != null) return Text('$_setupError');
                 if (_loading) {
