@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:interstellar/src/api/api.dart';
 import 'package:interstellar/src/api/client.dart';
 import 'package:interstellar/src/api/feed_source.dart';
 import 'package:interstellar/src/api/mastodon.dart';
@@ -99,6 +100,13 @@ void main() {
       );
     });
 
+    test('plain text that looks like a mention is not an app mention', () {
+      expect(
+        mastodonHtmlToMarkdown('<p>hi @alice@social.example.com</p>'),
+        r'hi \@alice\@social.example.com',
+      );
+    });
+
     test('a line break is a hard break', () {
       expect(mastodonHtmlToMarkdown('<p>a<br>b</p>'), 'a  \nb');
     });
@@ -140,6 +148,26 @@ void main() {
 
       expect(post.body, '::: spoiler Politics\nBody\n:::');
     });
+
+    test(
+      'a content warning cannot load an image through the spoiler title',
+      () {
+        final post = mastodonPost(
+          _status(
+            '1',
+            spoiler: '![](https://t.example.com/p.png)',
+            content: '<p>Body</p>',
+          ),
+          _host,
+        );
+
+        expect(
+          post.body,
+          r'::: spoiler !\[\](https://t.example.com/p.png)'
+          '\nBody\n:::',
+        );
+      },
+    );
 
     test('an attachment with no url is skipped instead of failing', () {
       final post = mastodonPost(
@@ -236,5 +264,39 @@ void main() {
 
       expect(list.items, hasLength(1));
     });
+  });
+
+  group('writes are refused without a request', () {
+    // Mastodon is read-only here; the microblog calls are Mbin's and must not
+    // be sent to a Mastodon server.
+    for (final (name, call) in <(String, Future<Object?> Function(API))>[
+      ('putVote', (api) => api.microblogs.putVote(1, 1)),
+      ('putFavorite', (api) => api.microblogs.putFavorite(1)),
+      ('edit', (api) => api.microblogs.edit(1, 'x', 'en', false)),
+      ('delete', (api) => api.microblogs.delete(1)),
+      (
+        'create',
+        (api) =>
+            api.microblogs.create(0, body: 'x', lang: 'en', isAdult: false),
+      ),
+      ('report', (api) => api.microblogs.report(1, 'x')),
+    ]) {
+      test(name, () async {
+        var requests = 0;
+        final api = API(
+          ServerClient(
+            httpClient: MockClient((r) async {
+              requests++;
+              return http.Response('{}', 200);
+            }),
+            software: ServerSoftware.mastodon,
+            domain: _host,
+          ),
+        );
+
+        await expectLater(call(api), throwsA(isA<UnsupportedError>()));
+        expect(requests, 0);
+      });
+    }
   });
 }

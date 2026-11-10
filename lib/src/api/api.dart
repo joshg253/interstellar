@@ -57,6 +57,7 @@ const _mastodonCompatible = {
   'mastodon',
   'hometown',
   'glitch',
+  'glitch-soc',
   'catodon',
   'iceshrimp',
   'sharkey',
