@@ -27,6 +27,8 @@ Future<void> showContentMenu(
   void Function()? onReply,
 }) async {
   final ac = context.read<AppController>();
+  // the post's own account in merged views, not the selected one
+  final software = context.software;
 
   return ContextMenu(
     actionSpacing: 50,
@@ -95,9 +97,9 @@ Future<void> showContentMenu(
         ),
       if (widget.notificationControlStatus != null &&
           widget.onNotificationControlStatusChange != null &&
-          ((ac.serverSoftware == ServerSoftware.mbin &&
+          ((software == ServerSoftware.mbin &&
                   widget.contentTypeName != l(context).comment) ||
-              ac.serverSoftware == ServerSoftware.piefed))
+              software == ServerSoftware.piefed))
         ContextMenuAction(
           child: NotificationControlSegment(
             widget.notificationControlStatus!,
@@ -140,7 +142,7 @@ Future<void> showContentMenu(
             child: Icon(Symbols.arrow_right_rounded),
           ),
         ),
-      if (ac.serverSoftware != ServerSoftware.mbin &&
+      if (software != ServerSoftware.mbin &&
           widget.activeBookmarkLists != null &&
           widget.onAddBookmark != null &&
           widget.onRemoveBookmark != null)

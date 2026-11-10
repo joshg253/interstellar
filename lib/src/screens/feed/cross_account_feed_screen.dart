@@ -62,6 +62,8 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
   CrossAccountFeed<PostModel>? _feed;
   bool _loading = false;
   Object? _setupError;
+  // The skip notice the user closed: its source and skipped accounts.
+  String? _dismissedSkip;
   late FeedSource _filter;
   late FeedSort _sort;
   // Set by the filter sheet or the floating menu; null follows the settings.
@@ -503,20 +505,30 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
     final ac = context.watch<AppController>();
     // Ticked accounts that cannot serve this source (e.g. guests on a
     // personal feed) are left out; say so rather than silently.
-    final skipped = _community != null
+    final skippedAccounts = _community != null
         ? const <String>[]
         : [
             for (final account in ac.accounts.keys)
               if (widget.accounts.includes(account) &&
                   _apis.containsKey(account) &&
                   !_supports(ac, account, _filter))
-                // guests have no name, only the server
-                '${isAccountSignedIn(ac, account) ? account : '${account.split('@').last} (guest)'}'
-                    ' has no ${_filter.title(context)} feed',
+                account,
           ];
-    // retrying cannot help with the skipped ones
-    final canRetry = problems.isNotEmpty;
-    problems.addAll(skipped);
+    final skipped = [
+      for (final account in skippedAccounts)
+        // guests have no name, only the server
+        '${isAccountSignedIn(ac, account) ? account : '${account.split('@').last} (guest)'}'
+            ' has no ${_filter.title(context)} feed',
+    ];
+    // closed by the user; another source or set of skipped accounts shows it
+    // again
+    final skipKey =
+        '${_filter.name}|${(skippedAccounts.toList()..sort()).join(',')}';
+    if (skipKey != _dismissedSkip) _dismissedSkip = null;
+    final skipNotice = skipped.isEmpty || _dismissedSkip != null
+        ? null
+        : skipped.join('\n');
+    final headers = (problems.isEmpty ? 0 : 1) + (skipNotice == null ? 0 : 1);
     final hideRead = _effectiveHideRead(ac);
     final visible = _visible(ac);
     // The same actions as the regular feed, placed where the profile says.
@@ -655,20 +667,28 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
           child: ListView.builder(
             controller: _scroll,
             physics: const AlwaysScrollableScrollPhysics(),
-            itemCount: visible.length + 1 + (problems.isEmpty ? 0 : 1),
+            itemCount: visible.length + 1 + headers,
             itemBuilder: (context, index) {
               if (problems.isNotEmpty && index == 0) {
                 return MaterialBanner(
                   content: Text(problems.join('\n')),
                   actions: [
-                    if (canRetry)
-                      TextButton(onPressed: _reset, child: const Text('Retry'))
-                    else
-                      const SizedBox.shrink(),
+                    TextButton(onPressed: _reset, child: const Text('Retry')),
                   ],
                 );
               }
-              final i = index - (problems.isEmpty ? 0 : 1);
+              if (skipNotice != null && index == headers - 1) {
+                return MaterialBanner(
+                  content: Text(skipNotice),
+                  actions: [
+                    TextButton(
+                      onPressed: () => setState(() => _dismissedSkip = skipKey),
+                      child: const Text('Dismiss'),
+                    ),
+                  ],
+                );
+              }
+              final i = index - headers;
               if (i == visible.length) {
                 if (_setupError != null) return Text('$_setupError');
                 if (_loading) {
@@ -722,7 +742,10 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
                 return const SizedBox(height: 48);
               }
               final (account, post) = visible[i];
+              // keyed, so a banner appearing or going away does not hand one
+              // post's state (e.g. a translation) to another row
               return ValueListenableBuilder<String?>(
+                key: ValueKey((account, post.id)),
                 valueListenable: interactAccount,
                 builder: (context, _, _) {
                   final ac = context.watch<AppController>();
@@ -750,11 +773,7 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
                     ]),
                   );
                   if (actingMissing && _overrides[key] == null) {
-                    display = display.copyWith(
-                      myVote: null,
-                      myBoost: null,
-                      bookmarks: null,
-                    );
+                    display = withoutActorVotes(display);
                   }
                   return AccountScope(
                     account: shown,
@@ -808,3 +827,8 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
     );
   }
 }
+
+/// A copy shown in place of the acting account's own: its vote state is not
+/// yours, but bookmarks stay since actions run as the account it came from.
+PostModel withoutActorVotes(PostModel post) =>
+    post.copyWith(myVote: null, myBoost: null);
