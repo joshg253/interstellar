@@ -39,6 +39,46 @@ class APIBookmark {
 
   final ServerClient client;
 
+  /// Mbin leaves the user's own vote out of a bookmark list (`null`, where other
+  /// lists say `false` or 0), so a bookmarked item you voted on would show no
+  /// vote and a tap would undo it. Those items are fetched for their vote (on
+  /// Mbin that also marks the user's unread notifications for a fetched thread
+  /// or post as read, as opening it would). One that cannot be fetched is kept
+  /// as listed.
+  Future<List<JsonMap>> _withOwnVotes(List<JsonMap> items) async {
+    Future<JsonMap> withVote(JsonMap item) async {
+      if (item['isFavourited'] != null || item['userVote'] != null) {
+        return item;
+      }
+      final path = switch (item['itemType']) {
+        'entry' => '/entry/${item['entryId']}',
+        'post' => '/post/${item['postId']}',
+        'entry_comment' => '/comments/${item['commentId']}',
+        'post_comment' => '/post-comments/${item['commentId']}',
+        _ => null,
+      };
+      if (path == null) return item;
+      try {
+        final fresh = (await client.get(path)).bodyJson;
+        return {
+          ...item,
+          'isFavourited': fresh['isFavourited'],
+          'userVote': fresh['userVote'],
+        };
+      } on Object {
+        // best effort: a failed or odd response keeps the item as listed
+        return item;
+      }
+    }
+
+    // a few at a time, so a page of bookmarks is not a burst of requests
+    const batch = 5;
+    return [
+      for (var i = 0; i < items.length; i += batch)
+        ...await Future.wait(items.skip(i).take(batch).map(withVote)),
+    ];
+  }
+
   Future<(List<Object>, String?)> list({String? list, String? page}) async {
     switch (client.software) {
       case ServerSoftware.mastodon:
@@ -51,17 +91,19 @@ class APIBookmark {
         final response = await client.get(path, queryParams: query);
 
         final json = response.bodyJson;
-        final itemList = json['items']! as List<dynamic>;
+        final itemList = await _withOwnVotes(
+          (json['items']! as List<dynamic>).cast<JsonMap>(),
+        );
         final items = itemList
             .map((item) {
               final itemType = item['itemType'];
               if (itemType == 'entry') {
-                return PostModel.fromMbinEntry(item as JsonMap);
+                return PostModel.fromMbinEntry(item);
               } else if (itemType == 'post') {
-                return PostModel.fromMbinPost(item as JsonMap);
+                return PostModel.fromMbinPost(item);
               } else if (itemType == 'entry_comment' ||
                   itemType == 'post_comment') {
-                return CommentModel.fromMbin(item as JsonMap);
+                return CommentModel.fromMbin(item);
               }
             })
             .nonNulls
