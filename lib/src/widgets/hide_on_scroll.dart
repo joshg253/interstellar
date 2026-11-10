@@ -23,7 +23,9 @@ class _HideOnScrollState extends State<HideOnScroll> {
   bool _hidden = false;
 
   void _onScroll() {
-    final scrollDirection = widget.controller?.position.userScrollDirection;
+    final controller = widget.controller;
+    if (controller == null || !controller.hasClients) return;
+    final scrollDirection = controller.positions.last.userScrollDirection;
     if (scrollDirection == ScrollDirection.forward && _hidden) {
       setState(() => _hidden = false);
     } else if (scrollDirection == ScrollDirection.reverse) {

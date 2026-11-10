@@ -15,11 +15,18 @@ import 'package:interstellar/src/widgets/paging.dart';
 import 'package:interstellar/src/widgets/selection_menu.dart';
 import 'package:interstellar/src/widgets/wrapper.dart';
 import 'package:material_symbols_icons/symbols.dart';
+import 'package:interstellar/src/widgets/account_switcher.dart';
 import 'package:provider/provider.dart';
+
+/// The Explore tab's search and settings, kept while the app runs.
+({String text, ExploreType type, ExploreFilter filter, APIExploreSort sort})?
+_tabMemory;
 
 @RoutePage()
 class ExploreTab extends ExploreScreen {
-  const ExploreTab({super.key, super.focusNode});
+  // The tab shows which account it is exploring as, with a way to change it.
+  const ExploreTab({super.key, super.focusNode})
+    : super(accountsAction: const AccountSwitcher());
 }
 
 @RoutePage()
@@ -32,6 +39,7 @@ class ExploreScreen extends StatefulWidget {
     this.onTap,
     this.selected,
     this.title,
+    this.accountsAction,
     super.key,
   });
 
@@ -43,6 +51,10 @@ class ExploreScreen extends StatefulWidget {
   final Set<String>? selected;
   final String? title;
 
+  /// Shown as the last top-bar action (the Explore tab puts the account
+  /// switcher here).
+  final Widget? accountsAction;
+
   @override
   State<ExploreScreen> createState() => _ExploreScreenState();
 }
@@ -52,6 +64,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
   final TextEditingController _searchController = TextEditingController();
   final searchDebounce = Debouncer(duration: const Duration(milliseconds: 500));
   Set<String>? _selected;
+  String? _account;
 
   ExploreType type = ExploreType.communities;
 
@@ -150,11 +163,58 @@ class _ExploreScreenState extends State<ExploreScreen> {
     if (widget.subOnly) {
       filter = ExploreFilter.subscribed;
     }
+
+    // An account switch rebuilds the whole app shell, and the tab with it, so
+    // it picks its last search and settings back up, adapted to this account.
+    final ac = context.read<AppController>();
+    final saved = widget is ExploreTab ? _tabMemory : null;
+    if (saved != null) {
+      final adapted = adaptExploreForServer(
+        type: saved.type,
+        filter: saved.filter,
+        software: ac.serverSoftware,
+        loggedIn: ac.isLoggedIn,
+      );
+      type = adapted.type;
+      filter = adapted.filter;
+      sort = saved.sort;
+      _searchController.text = saved.text;
+    }
+    _account = ac.selectedAccount;
   }
 
   @override
   Widget build(BuildContext context) {
     const chipPadding = EdgeInsets.symmetric(vertical: 6, horizontal: 4);
+
+    // A switched account keeps the search and settings, adapted to what its
+    // server offers, and runs them again as that account.
+    final account = context.watch<AppController>().selectedAccount;
+    if (_account != account) {
+      if (_account != null) {
+        final adapted = adaptExploreForServer(
+          type: type,
+          filter: filter,
+          software: context.read<AppController>().serverSoftware,
+          loggedIn: context.read<AppController>().isLoggedIn,
+        );
+        type = adapted.type;
+        filter = adapted.filter;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _pagingController.refresh();
+        });
+      }
+      _account = account;
+    }
+
+    if (widget is ExploreTab) {
+      _tabMemory = (
+        text: _searchController.text,
+        type: type,
+        filter: filter,
+        sort: sort,
+      );
+    }
 
     final currentExploreSort = exploreSortSelection(context).getOption(sort);
     final currentExploreFilter = exploreFilterSelection(
@@ -181,6 +241,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
                       : '${l(context).explore} ${ac.instanceHost}',
               },
         ),
+        actions: [if (widget.accountsAction != null) widget.accountsAction!],
       ),
       body: AdvancedPagedScrollView(
         controller: _pagingController,
@@ -544,6 +605,42 @@ class _ExploreScreenState extends State<ExploreScreen> {
 }
 
 enum ExploreType { communities, people, domains, feeds, topics, all }
+
+/// What an Explore view keeps when the account, and so maybe the server type,
+/// changes: its type and filter if the new server offers them, else the
+/// nearest it does (communities, all results). Mirrors the choices the chips
+/// and [exploreFilterSelection] offer.
+({ExploreType type, ExploreFilter filter}) adaptExploreForServer({
+  required ExploreType type,
+  required ExploreFilter filter,
+  required ServerSoftware software,
+  required bool loggedIn,
+}) {
+  final mbin = software == ServerSoftware.mbin;
+
+  final newType = switch (type) {
+    ExploreType.domains when !mbin => ExploreType.communities,
+    ExploreType.feeds || ExploreType.topics
+        when software != ServerSoftware.piefed =>
+      ExploreType.communities,
+    _ => type,
+  };
+
+  final offered = switch (filter) {
+    ExploreFilter.all => true,
+    ExploreFilter.local => !mbin || newType == ExploreType.communities,
+    ExploreFilter.subscribed =>
+      loggedIn && (mbin || newType == ExploreType.communities),
+    ExploreFilter.moderated =>
+      loggedIn &&
+          newType != ExploreType.domains &&
+          (mbin ||
+              (newType != ExploreType.people && newType != ExploreType.all)),
+    ExploreFilter.blocked => loggedIn && mbin,
+  };
+
+  return (type: newType, filter: offered ? filter : ExploreFilter.all);
+}
 
 enum ExploreFilter {
   all,

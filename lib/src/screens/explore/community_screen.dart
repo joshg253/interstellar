@@ -1,14 +1,17 @@
-import 'package:auto_route/annotations.dart';
+import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:interstellar/src/api/feed_source.dart';
+import 'package:interstellar/src/api/resolve.dart';
 import 'package:interstellar/src/api/notifications.dart';
 import 'package:interstellar/src/controller/controller.dart';
+import 'package:interstellar/src/controller/router.gr.dart';
 import 'package:interstellar/src/controller/server.dart';
 import 'package:interstellar/src/models/community.dart';
 import 'package:interstellar/src/screens/feed/feed_agregator.dart';
 import 'package:interstellar/src/screens/feed/feed_screen.dart';
 import 'package:interstellar/src/utils/utils.dart';
+import 'package:interstellar/src/widgets/account_avatar.dart';
 import 'package:interstellar/src/widgets/avatar.dart';
 import 'package:interstellar/src/widgets/loading_button.dart';
 import 'package:interstellar/src/widgets/markdown/markdown.dart';
@@ -65,17 +68,82 @@ class _CommunityScreenState extends State<CommunityScreen> {
     // }
   }
 
+  /// Signed-in accounts, other than the selected one, that could view this
+  /// community.
+  List<String> _otherAccounts(AppController ac) => [
+    for (final account in ac.accounts.keys)
+      if (account != ac.selectedAccount &&
+          isAccountSignedIn(ac, account) &&
+          (ac.servers[account.split('@').last]?.software.canBeAppAccount ??
+              false))
+        account,
+  ];
+
+  /// Looks this community up on [account]'s server and, if found, makes that
+  /// the selected account and reopens the community there.
+  Future<void> _openAs(String account) async {
+    final ac = context.read<AppController>();
+    final data = _data!;
+    final host = account.split('@').last;
+    // Where the community lives: its ActivityPub id is authoritative; the
+    // name's host (or the viewing account's server) is the fallback.
+    final bare = data.name.split('@').first;
+    final apHost = data.apId == null ? null : Uri.tryParse(data.apId!)?.host;
+    final origin = (apHost != null && apHost.isNotEmpty)
+        ? apHost
+        : (data.name.contains('@')
+              ? data.name.split('@').last
+              : ac.instanceHost);
+    final full = '$bare@$origin';
+    // a community local to the target server is looked up by its bare name
+    final name = origin == host ? bare : full;
+
+    // Held across the switch, which rebuilds the app shell and this page.
+    final router = context.router;
+    final messenger = ScaffoldMessenger.of(context);
+    void fail(String step, Object e) =>
+        messenger.showSnackBar(SnackBar(content: Text('$account: $step: $e')));
+
+    DetailedCommunityModel found;
+    try {
+      final api = await ac.getApiForAccount(account);
+      // A community from another server may be unknown to the target: ask it
+      // to fetch the community first, and fall back to a plain lookup.
+      final fetched = origin != host && data.apId != null
+          ? await resolveCommunity(
+              api.client,
+              data.apId!,
+            ).catchError((Object _) => null)
+          : null;
+      found = fetched ?? await api.community.getByName(name);
+    } catch (e) {
+      fail('could not find $full', e);
+      return;
+    }
+    try {
+      await ac.switchAccounts(account);
+      await router.replace(
+        CommunityRoute(
+          communityName: found.name,
+          communityId: found.id,
+          initData: found,
+        ),
+      );
+    } catch (e) {
+      fail('could not open ${found.name}', e);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final ac = context.watch<AppController>();
 
     if (_data == null) return Container();
+    final others = _otherAccounts(ac);
 
     final globalName = _data == null
         ? null
-        : _data!.name.contains('@')
-        ? '!${_data!.name}'
-        : '!${_data!.name}@${ac.instanceHost}';
+        : communityGlobalName(_data!.name, _data!.apId, ac.instanceHost);
 
     return FeedScreen(
       feedName: _data?.name ?? '',
@@ -115,6 +183,25 @@ class _CommunityScreenState extends State<CommunityScreen> {
                             followMode: false,
                           ),
                           StarButton(globalName!),
+                          if (others.isNotEmpty)
+                            PopupMenuButton<String>(
+                              tooltip: 'Open as',
+                              icon: const Icon(Symbols.switch_account_rounded),
+                              onSelected: _openAs,
+                              itemBuilder: (context) => [
+                                for (final account in others)
+                                  PopupMenuItem<String>(
+                                    value: account,
+                                    child: Row(
+                                      spacing: 8,
+                                      children: [
+                                        AccountAvatar(account),
+                                        Flexible(child: Text(account)),
+                                      ],
+                                    ),
+                                  ),
+                              ],
+                            ),
                           if (whenLoggedIn(context, true) ?? false)
                             LoadingIconButton(
                               onPressed: () async {
@@ -207,11 +294,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                                 InkWell(
                                   onTap: () async {
                                     await Clipboard.setData(
-                                      ClipboardData(
-                                        text: _data!.name.contains('@')
-                                            ? '!${_data!.name}'
-                                            : '!${_data!.name}@${ac.instanceHost}',
-                                      ),
+                                      ClipboardData(text: globalName),
                                     );
 
                                     if (!context.mounted) return;
