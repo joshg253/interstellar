@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:interstellar/src/controller/controller.dart';
 import 'package:interstellar/src/models/poll.dart';
 import 'package:interstellar/src/utils/utils.dart';
+import 'package:interstellar/src/widgets/account_scope.dart';
 import 'package:interstellar/src/widgets/wrapper.dart';
 import 'package:provider/provider.dart';
 
@@ -181,7 +182,7 @@ class _PollState extends State<Poll> {
                       return;
                     }
 
-                    final post = await ac.api.threads.votePoll(
+                    final post = await context.scopedApi.threads.votePoll(
                       widget.poll.postId,
                       votes,
                     );

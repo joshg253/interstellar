@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:interstellar/src/api/mastodon.dart';
+import 'package:interstellar/src/models/community.dart';
 import 'package:interstellar/src/models/post.dart';
 
 Map<String, dynamic> account(String id, String acct) => {
@@ -83,6 +84,12 @@ void main() {
   });
 
   group('post', () {
+    test('has no community, only a placeholder the UI hides', () {
+      final post = mastodonPost(status('1'), 'social.example.com');
+
+      expect(post.community.isNone, isTrue);
+    });
+
     test('maps a status', () {
       final post = mastodonPost(
         status('117564943898337275'),

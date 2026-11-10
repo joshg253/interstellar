@@ -17,6 +17,7 @@ import 'package:interstellar/src/models/post.dart';
 import 'package:interstellar/src/models/user.dart';
 import 'package:interstellar/src/utils/language.dart';
 import 'package:interstellar/src/utils/utils.dart';
+import 'package:interstellar/src/widgets/account_scope.dart';
 import 'package:interstellar/src/widgets/content_item/action_buttons.dart';
 import 'package:interstellar/src/widgets/content_item/content_info.dart';
 import 'package:interstellar/src/widgets/content_item/content_item_link_panel.dart';
@@ -932,17 +933,24 @@ class _ContentItemState extends State<ContentItem> {
                     ?contentTitle(context, null),
                     Row(
                       children: [
-                        Flexible(
-                          child: DisplayName(
-                            widget.community!.name,
-                            onTap: () => context.router.push(
-                              CommunityRoute(
-                                communityName: widget.community!.name,
-                                communityId: widget.community!.id,
-                              ),
+                        if (!widget.community!.isNone)
+                          Flexible(
+                            child: DisplayName(
+                              widget.community!.name,
+                              onTap: () {
+                                final target = context.targetFor(
+                                  widget.community!.name,
+                                  widget.community!.id,
+                                );
+                                context.router.push(
+                                  CommunityRoute(
+                                    communityName: target.name,
+                                    communityId: target.id,
+                                  ),
+                                );
+                              },
                             ),
                           ),
-                        ),
                         Padding(
                           padding: const EdgeInsets.only(left: 8),
                           child: Tooltip(

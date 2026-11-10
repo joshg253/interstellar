@@ -518,3 +518,9 @@ extension DetailedCommunityModelMerge on DetailedCommunityModel {
       ? copyWith(moderators: old.moderators, owner: old.owner)
       : this;
 }
+
+extension CommunityNone on CommunityModel {
+  /// Microblogs on Mastodon have no community; the model then carries a
+  /// placeholder (id 0, no ActivityPub id) that screens must not show.
+  bool get isNone => id == 0 && apId == null;
+}

@@ -9,6 +9,7 @@ import 'package:interstellar/src/screens/explore/explore_screen.dart';
 import 'package:interstellar/src/screens/settings/feed_settings_screen.dart';
 import 'package:interstellar/src/utils/ap_urls.dart';
 import 'package:interstellar/src/utils/utils.dart';
+import 'package:interstellar/src/widgets/account_scope.dart';
 import 'package:interstellar/src/widgets/context_menu.dart';
 import 'package:interstellar/src/widgets/loading_button.dart';
 import 'package:interstellar/src/widgets/star_button.dart';
@@ -24,6 +25,8 @@ Future<void> showUserMenu(
   bool navigateOption = false,
 }) async {
   final ac = context.read<AppController>();
+  // The account whose copy of the user is shown, not the selected one.
+  final api = context.scopedApi;
 
   final isMe =
       ac.isLoggedIn &&
@@ -34,13 +37,13 @@ Future<void> showUserMenu(
 
   return ContextMenu(
     actions: [
-      if (!isMe && ac.serverSoftware == ServerSoftware.mbin)
+      if (!isMe && api.client.software == ServerSoftware.mbin)
         ContextMenuAction(
           child: SubscriptionButton(
             isSubscribed: user.isFollowedByUser,
             subscriptionCount: user.followersCount,
             onSubscribe: (selected) async {
-              final newValue = await ac.api.users.follow(user.id, selected);
+              final newValue = await api.users.follow(user.id, selected);
               if (update != null) {
                 update(newValue);
               }
@@ -55,7 +58,7 @@ Future<void> showUserMenu(
         ContextMenuAction(
           child: LoadingIconButton(
             onPressed: () async {
-              final newValue = await ac.api.users.putBlock(
+              final newValue = await api.users.putBlock(
                 user.id,
                 !(user.isBlockedByUser ?? false),
               );

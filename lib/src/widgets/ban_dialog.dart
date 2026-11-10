@@ -1,30 +1,39 @@
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
-import 'package:interstellar/src/controller/controller.dart';
+import 'package:interstellar/src/api/api.dart';
 import 'package:interstellar/src/models/community.dart';
 import 'package:interstellar/src/models/user.dart';
 import 'package:interstellar/src/utils/utils.dart';
+import 'package:interstellar/src/widgets/account_scope.dart';
 import 'package:interstellar/src/widgets/loading_button.dart';
 import 'package:interstellar/src/widgets/text_editor.dart';
-import 'package:provider/provider.dart';
 
 Future<void> openBanDialog(
   BuildContext context, {
   required DetailedUserModel user,
   required CommunityModel community,
 }) async {
+  // The dialog route is outside the account scope, so take the scoped API
+  // here: the ban must go to the server the user and community belong to.
+  final api = context.scopedApi;
   await showDialog<DetailedCommunityModel>(
     context: context,
     builder: (BuildContext context) =>
-        BanDialog(user: user, community: community),
+        BanDialog(user: user, community: community, api: api),
   );
 }
 
 class BanDialog extends StatefulWidget {
-  const BanDialog({required this.user, required this.community, super.key});
+  const BanDialog({
+    required this.user,
+    required this.community,
+    required this.api,
+    super.key,
+  });
 
   final DetailedUserModel user;
   final CommunityModel community;
+  final API api;
 
   @override
   State<BanDialog> createState() => _BanDialogState();
@@ -62,15 +71,11 @@ class _BanDialogState extends State<BanDialog> {
           onPressed: _reasonTextEditingController.text.isEmpty
               ? null
               : () async {
-                  await context
-                      .read<AppController>()
-                      .api
-                      .communityModeration
-                      .createBan(
-                        widget.community.id,
-                        widget.user.id,
-                        reason: _reasonTextEditingController.text,
-                      );
+                  await widget.api.communityModeration.createBan(
+                    widget.community.id,
+                    widget.user.id,
+                    reason: _reasonTextEditingController.text,
+                  );
 
                   if (!context.mounted) return;
                   context.router.pop();

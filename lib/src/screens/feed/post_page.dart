@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -10,10 +12,12 @@ import 'package:interstellar/src/controller/router.gr.dart';
 import 'package:interstellar/src/controller/server.dart';
 import 'package:interstellar/src/models/comment.dart';
 import 'package:interstellar/src/models/post.dart';
+import 'package:interstellar/src/screens/feed/merged_post.dart';
 import 'package:interstellar/src/screens/feed/post_comment.dart';
 import 'package:interstellar/src/screens/feed/post_item.dart';
 import 'package:interstellar/src/utils/ap_urls.dart';
 import 'package:interstellar/src/utils/utils.dart';
+import 'package:interstellar/src/widgets/account_scope.dart';
 import 'package:interstellar/src/widgets/ban_dialog.dart';
 import 'package:interstellar/src/widgets/content_item/content_item.dart';
 import 'package:interstellar/src/widgets/context_menu.dart';
@@ -90,6 +94,29 @@ Future<void> pushPostPage(
   final type = postType ?? initData!.type;
   final id = postId ?? initData!.id;
 
+  // Inside an AccountScope the router would rebuild the page under the
+  // selected account, so push a plain route that keeps the scope.
+  final scope = AccountScope.maybeOf(context);
+  if (scope != null) {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => AccountScope(
+          account: scope.account,
+          api: scope.api,
+          standIn: scope.standIn,
+          child: PostPage(
+            postType: type,
+            postId: id,
+            initData: initData,
+            onUpdate: onUpdate,
+            userCanModerate: userCanModerate,
+          ),
+        ),
+      ),
+    );
+    return;
+  }
+
   context.router.push(
     type == PostType.thread
         ? ThreadRoute(
@@ -118,6 +145,8 @@ class PostPage extends StatefulWidget {
     this.onUpdate,
     super.key,
     this.userCanModerate = false,
+    this.copies = const [],
+    this.candidates = const [],
   });
 
   final PostType? postType;
@@ -126,12 +155,35 @@ class PostPage extends StatefulWidget {
   final void Function(PostModel)? onUpdate;
   final bool userCanModerate;
 
+  /// Other accounts' copies of this post; each gets its own comment section.
+  final List<AccountCopy> copies;
+
+  /// Signed-in accounts with no copy yet; picking one resolves the post there.
+  final List<PendingAccount> candidates;
+
   @override
   State<PostPage> createState() => _PostPageState();
 }
 
 class _PostPageState extends State<PostPage> {
   PostModel? _data;
+
+  late final _copies = PostCopies(
+    copies: widget.copies,
+    candidates: widget.candidates,
+  )..addListener(_onCopies);
+
+  void _onCopies() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _copies
+      ..removeListener(_onCopies)
+      ..dispose();
+    super.dispose();
+  }
 
   CommentSort commentSort = CommentSort.hot;
 
@@ -153,8 +205,12 @@ class _PostPageState extends State<PostPage> {
     if (widget.postType != null && widget.postId != null || _data != null) {
       final ac = context.read<AppController>();
       final newPost = await switch (widget.postType ?? _data!.type) {
-        PostType.thread => ac.api.threads.get(widget.postId ?? _data!.id),
-        PostType.microblog => ac.api.microblogs.get(widget.postId ?? _data!.id),
+        PostType.thread => context.scopedApi.threads.get(
+          widget.postId ?? _data!.id,
+        ),
+        PostType.microblog => context.scopedApi.microblogs.get(
+          widget.postId ?? _data!.id,
+        ),
       };
       if (!mounted) return;
       setState(() {
@@ -164,9 +220,11 @@ class _PostPageState extends State<PostPage> {
       throw Exception('Post data was uninitialized');
     }
 
+    unawaited(_copies.loadAll());
+
     if (!mounted) return;
     _onUpdate(
-      (await context.read<AppController>().markAsRead([
+      (await context.markPostsRead([
         _data!,
         ...?(context.read<AppController>().profile.markCrossPostsAsRead
             ? _data!.crossPosts
@@ -197,7 +255,9 @@ class _PostPageState extends State<PostPage> {
     PostModel crossPost,
   ) async {
     final ac = context.read<AppController>();
-    final canModerate = crossPost.canAuthUserModerate ?? false;
+    final canModerate =
+        (crossPost.canAuthUserModerate ?? false) &&
+        (whenLoggedIn(context, true) ?? false);
     final contentItem = ContentItem(
       originInstance: getNameHost(context, crossPost.user.name),
       id: crossPost.id,
@@ -210,10 +270,13 @@ class _PostPageState extends State<PostPage> {
       isBoosted: crossPost.myBoost ?? false,
       onBoost: whenLoggedIn(context, () async {
         _updateCrossPost(
-          (await ac.markAsRead([
+          (await context.markPostsRead([
             await switch (crossPost.type) {
-              PostType.thread => ac.api.threads.boost(crossPost.id),
-              PostType.microblog => ac.api.microblogs.putVote(crossPost.id, 1),
+              PostType.thread => context.scopedApi.threads.boost(crossPost.id),
+              PostType.microblog => context.scopedApi.microblogs.putVote(
+                crossPost.id,
+                1,
+              ),
             },
           ], true)).first,
         );
@@ -222,14 +285,16 @@ class _PostPageState extends State<PostPage> {
       isUpVoted: crossPost.myVote == 1,
       onUpVote: whenLoggedIn(context, () async {
         _updateCrossPost(
-          (await ac.markAsRead([
+          (await context.markPostsRead([
             await switch (crossPost.type) {
-              PostType.thread => ac.api.threads.vote(
+              PostType.thread => context.scopedApi.threads.vote(
                 crossPost.id,
                 1,
                 crossPost.myVote == 1 ? 0 : 1,
               ),
-              PostType.microblog => ac.api.microblogs.putFavorite(crossPost.id),
+              PostType.microblog => context.scopedApi.microblogs.putFavorite(
+                crossPost.id,
+              ),
             },
           ], true)).first,
         );
@@ -238,14 +303,17 @@ class _PostPageState extends State<PostPage> {
       isDownVoted: crossPost.myVote == -1,
       onDownVote: whenLoggedIn(context, () async {
         _updateCrossPost(
-          (await ac.markAsRead([
+          (await context.markPostsRead([
             await switch (crossPost.type) {
-              PostType.thread => ac.api.threads.vote(
+              PostType.thread => context.scopedApi.threads.vote(
                 crossPost.id,
                 -1,
                 crossPost.myVote == -1 ? 0 : -1,
               ),
-              PostType.microblog => ac.api.microblogs.putVote(crossPost.id, -1),
+              PostType.microblog => context.scopedApi.microblogs.putVote(
+                crossPost.id,
+                -1,
+              ),
             },
           ], true)).first,
         );
@@ -253,31 +321,38 @@ class _PostPageState extends State<PostPage> {
       contentTypeName: l(context).post,
       onReport: whenLoggedIn(context, (reason) async {
         await switch (crossPost.type) {
-          PostType.thread => ac.api.threads.report(crossPost.id, reason),
-          PostType.microblog => ac.api.microblogs.report(crossPost.id, reason),
+          PostType.thread => context.scopedApi.threads.report(
+            crossPost.id,
+            reason,
+          ),
+          PostType.microblog => context.scopedApi.microblogs.report(
+            crossPost.id,
+            reason,
+          ),
         };
       }),
       onMarkAsRead: () async {
         _updateCrossPost(
-          (await ac.markAsRead([crossPost], !crossPost.read)).first,
+          (await context.markPostsRead([crossPost], !crossPost.read)).first,
         );
       },
       onModeratePin: !canModerate
           ? null
           : () async {
               _updateCrossPost(
-                await ac.api.moderation.postPin(
+                await context.scopedApi.moderation.postPin(
                   crossPost.type,
                   crossPost.id,
                   !crossPost.isPinned,
                 ),
               );
             },
-      onModerateMarkNSFW: !canModerate || !ac.api.moderation.canMarkNSFW
+      onModerateMarkNSFW:
+          !canModerate || !context.scopedApi.moderation.canMarkNSFW
           ? null
           : () async {
               _updateCrossPost(
-                await ac.api.moderation.postMarkNSFW(
+                await context.scopedApi.moderation.postMarkNSFW(
                   crossPost.type,
                   crossPost.id,
                   !crossPost.isNSFW,
@@ -288,7 +363,7 @@ class _PostPageState extends State<PostPage> {
           ? null
           : () async {
               _updateCrossPost(
-                await ac.api.moderation.postDelete(
+                await context.scopedApi.moderation.postDelete(
                   crossPost.type,
                   crossPost.id,
                   true,
@@ -308,7 +383,7 @@ class _PostPageState extends State<PostPage> {
           ? null
           : () async {
               _updateCrossPost(
-                await ac.api.moderation.postLock(
+                await context.scopedApi.moderation.postLock(
                   crossPost.type,
                   crossPost.id,
                   !crossPost.isLocked,
@@ -323,27 +398,28 @@ class _PostPageState extends State<PostPage> {
       activeBookmarkLists: crossPost.bookmarks,
       loadPossibleBookmarkLists: whenLoggedIn(
         context,
-        () async => (await ac.api.bookmark.getBookmarkLists())
+        () async => (await context.scopedApi.bookmark.getBookmarkLists())
             .map((list) => list.name)
             .toList(),
         matchesSoftware: ServerSoftware.mbin,
       ),
       onAddBookmark: whenLoggedIn(context, () async {
         try {
-          final newBookmarks = await ac.api.bookmark.addBookmarkToDefault(
-            subjectType: BookmarkListSubject.fromPostType(
-              postType: crossPost.type,
-              isComment: false,
-            ),
-            subjectId: crossPost.id,
-          );
+          final newBookmarks = await context.scopedApi.bookmark
+              .addBookmarkToDefault(
+                subjectType: BookmarkListSubject.fromPostType(
+                  postType: crossPost.type,
+                  isComment: false,
+                ),
+                subjectId: crossPost.id,
+              );
           _updateCrossPost(crossPost.copyWith(bookmarks: newBookmarks));
         } catch (e) {
           //
         }
       }),
       onAddBookmarkToList: whenLoggedIn(context, (String listName) async {
-        final newBookmarks = await ac.api.bookmark.addBookmarkToList(
+        final newBookmarks = await context.scopedApi.bookmark.addBookmarkToList(
           subjectType: BookmarkListSubject.fromPostType(
             postType: crossPost.type,
             isComment: false,
@@ -355,27 +431,29 @@ class _PostPageState extends State<PostPage> {
       }, matchesSoftware: ServerSoftware.mbin),
       onRemoveBookmark: whenLoggedIn(context, () async {
         try {
-          final newBookmarks = await ac.api.bookmark.removeBookmarkFromAll(
-            subjectType: BookmarkListSubject.fromPostType(
-              postType: crossPost.type,
-              isComment: false,
-            ),
-            subjectId: crossPost.id,
-          );
+          final newBookmarks = await context.scopedApi.bookmark
+              .removeBookmarkFromAll(
+                subjectType: BookmarkListSubject.fromPostType(
+                  postType: crossPost.type,
+                  isComment: false,
+                ),
+                subjectId: crossPost.id,
+              );
           _updateCrossPost(crossPost.copyWith(bookmarks: newBookmarks));
         } catch (e) {
           //
         }
       }),
       onRemoveBookmarkFromList: whenLoggedIn(context, (String listName) async {
-        final newBookmarks = await ac.api.bookmark.removeBookmarkFromList(
-          subjectType: BookmarkListSubject.fromPostType(
-            postType: crossPost.type,
-            isComment: false,
-          ),
-          subjectId: crossPost.id,
-          listName: listName,
-        );
+        final newBookmarks = await context.scopedApi.bookmark
+            .removeBookmarkFromList(
+              subjectType: BookmarkListSubject.fromPostType(
+                postType: crossPost.type,
+                isComment: false,
+              ),
+              subjectId: crossPost.id,
+              listName: listName,
+            );
         _updateCrossPost(crossPost.copyWith(bookmarks: newBookmarks));
       }, matchesSoftware: ServerSoftware.mbin),
       notificationControlStatus: crossPost.notificationControlStatus,
@@ -383,7 +461,7 @@ class _PostPageState extends State<PostPage> {
           crossPost.notificationControlStatus == null
           ? null
           : (newStatus) async {
-              await ac.api.notifications.updateControl(
+              await context.scopedApi.notifications.updateControl(
                 targetType: switch (crossPost.type) {
                   PostType.thread => NotificationControlUpdateTargetType.entry,
                   PostType.microblog =>
@@ -404,9 +482,9 @@ class _PostPageState extends State<PostPage> {
           ? null
           : whenLoggedIn(context, (emoji) async {
               _updateCrossPost(
-                (await ac.markAsRead([
+                (await context.markPostsRead([
                   await switch (crossPost.type) {
-                    PostType.thread => ac.api.threads.vote(
+                    PostType.thread => context.scopedApi.threads.vote(
                       crossPost.id,
                       1,
                       1,
@@ -419,6 +497,81 @@ class _PostPageState extends State<PostPage> {
             }),
     );
     showContentMenu(context, contentItem);
+  }
+
+  Widget _buildPostItem(
+    BuildContext context,
+    PostModel post,
+    void Function(PostModel) onUpdate,
+  ) {
+    return PostItem(
+      post,
+      onUpdate,
+      onReply: whenLoggedIn(context, (
+        body,
+        lang, {
+        XFile? image,
+        String? alt,
+      }) async {
+        final newComment = await context.scopedApi.comments.create(
+          post.type,
+          post.id,
+          body,
+          lang: lang,
+          image: image,
+          alt: alt,
+        );
+
+        _mainCommentSectionKey.currentState?._pagingController.prependPage('', [
+          newComment,
+        ]);
+      }),
+      onEdit: post.visibility != PostVisibility.soft_deleted
+          ? whenLoggedIn(context, (body) async {
+              final newPost = await switch (post.type) {
+                PostType.thread => context.scopedApi.threads.edit(
+                  post.id,
+                  post.title!,
+                  post.isOC,
+                  body,
+                  post.lang,
+                  post.isNSFW,
+                  tags: mbinExplicitTags(post.tags, post.body),
+                ),
+                PostType.microblog => context.scopedApi.microblogs.edit(
+                  post.id,
+                  body,
+                  post.lang!,
+                  post.isNSFW,
+                ),
+              };
+              onUpdate(newPost);
+            }, matchesUsername: post.user.name)
+          : null,
+      onDelete: post.visibility != PostVisibility.soft_deleted
+          ? whenLoggedIn(context, () async {
+              await switch (post.type) {
+                PostType.thread => context.scopedApi.threads.delete(post.id),
+                PostType.microblog => context.scopedApi.microblogs.delete(
+                  post.id,
+                ),
+              };
+
+              if (!context.mounted) return;
+
+              onUpdate(
+                post.copyWith(
+                  body: '_${l(context).postDeleted}_',
+                  upvotes: null,
+                  downvotes: null,
+                  boosts: null,
+                  visibility: PostVisibility.soft_deleted,
+                ),
+              );
+            }, matchesUsername: post.user.name)
+          : null,
+      userCanModerate: widget.userCanModerate,
+    );
   }
 
   GlobalKey<_CommentSectionState> _mainCommentSectionKey =
@@ -436,7 +589,7 @@ class _PostPageState extends State<PostPage> {
 
     final post = _data!;
 
-    final ac = context.read<AppController>();
+    final showMerged = AccountScope.maybeOf(context) != null;
 
     return Scaffold(
       appBar: AppBar(
@@ -477,6 +630,8 @@ class _PostPageState extends State<PostPage> {
               icon: const Icon(Symbols.sort_rounded),
             ),
           ),
+          // The account selector is always the rightmost action.
+          if (showMerged) mergedAccountMenu(context, _copies, post),
         ],
       ),
       body: SafeArea(
@@ -489,79 +644,16 @@ class _PostPageState extends State<PostPage> {
           child: CustomScrollView(
             slivers: [
               SliverToBoxAdapter(
-                child: PostItem(
-                  post,
-                  _onUpdate,
-                  onReply: whenLoggedIn(context, (
-                    body,
-                    lang, {
-                    XFile? image,
-                    String? alt,
-                  }) async {
-                    final newComment = await context
-                        .read<AppController>()
-                        .api
-                        .comments
-                        .create(
-                          post.type,
-                          post.id,
-                          body,
-                          lang: lang,
-                          image: image,
-                          alt: alt,
-                        );
-
-                    _mainCommentSectionKey.currentState?._pagingController
-                        .prependPage('', [newComment]);
-                  }),
-                  onEdit: post.visibility != PostVisibility.soft_deleted
-                      ? whenLoggedIn(context, (body) async {
-                          final newPost = await switch (post.type) {
-                            PostType.thread => ac.api.threads.edit(
-                              post.id,
-                              post.title!,
-                              post.isOC,
-                              body,
-                              post.lang,
-                              post.isNSFW,
-                              tags: mbinExplicitTags(post.tags, post.body),
-                            ),
-                            PostType.microblog => ac.api.microblogs.edit(
-                              post.id,
-                              body,
-                              post.lang!,
-                              post.isNSFW,
-                            ),
-                          };
-                          _onUpdate(newPost);
-                        }, matchesUsername: post.user.name)
-                      : null,
-                  onDelete: post.visibility != PostVisibility.soft_deleted
-                      ? whenLoggedIn(context, () async {
-                          await switch (post.type) {
-                            PostType.thread => ac.api.threads.delete(post.id),
-                            PostType.microblog => ac.api.microblogs.delete(
-                              post.id,
-                            ),
-                          };
-
-                          if (!context.mounted) return;
-
-                          _onUpdate(
-                            post.copyWith(
-                              body: '_${l(context).postDeleted}_',
-                              upvotes: null,
-                              downvotes: null,
-                              boosts: null,
-                              visibility: PostVisibility.soft_deleted,
-                            ),
-                          );
-                        }, matchesUsername: post.user.name)
-                      : null,
-                  userCanModerate: widget.userCanModerate,
-                ),
+                child: showMerged
+                    ? MergedPostHeader(
+                        copies: _copies,
+                        post: post,
+                        onUpdate: _onUpdate,
+                        builder: _buildPostItem,
+                      )
+                    : _buildPostItem(context, post, _onUpdate),
               ),
-              if (_data != null && _data!.crossPosts.isNotEmpty)
+              if (_data != null && _data!.crossPosts.isNotEmpty && !showMerged)
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -593,15 +685,19 @@ class _PostPageState extends State<PostPage> {
                     ),
                   ),
                 ),
-              CommentSection(
-                id: post.id,
-                postType: post.type,
-                sort: commentSort,
-                opUserId: post.user.id,
-                isLocked: post.isLocked,
-                key: _mainCommentSectionKey,
-              ),
-              if (context.read<AppController>().profile.showCrossPostComments)
+              if (showMerged)
+                ...mergedCommentSlivers(context, _copies, post, commentSort)
+              else
+                CommentSection(
+                  id: post.id,
+                  postType: post.type,
+                  sort: commentSort,
+                  opUserId: post.user.id,
+                  isLocked: post.isLocked,
+                  key: _mainCommentSectionKey,
+                ),
+              if (!showMerged &&
+                  context.read<AppController>().profile.showCrossPostComments)
                 ...post.crossPosts
                     .where((crossPost) => crossPost.numComments > 0)
                     .map(
@@ -680,7 +776,7 @@ class _CommentSectionState extends State<CommentSection> {
         fetchPage: (pageKey) async {
           final ac = context.read<AppController>();
 
-          final newPage = await ac.api.comments.list(
+          final newPage = await context.scopedApi.comments.list(
             widget.postType,
             widget.id,
             page: nullIfEmpty(pageKey),
