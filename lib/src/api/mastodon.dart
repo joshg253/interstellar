@@ -6,6 +6,7 @@ import 'package:interstellar/src/api/feed_source.dart';
 import 'package:interstellar/src/models/comment.dart';
 import 'package:interstellar/src/models/community.dart';
 import 'package:interstellar/src/models/image.dart';
+import 'package:interstellar/src/models/poll.dart';
 import 'package:interstellar/src/models/post.dart';
 import 'package:interstellar/src/models/user.dart';
 import 'package:interstellar/src/utils/models.dart';
@@ -59,7 +60,7 @@ String _decodeEntities(String text) => text.replaceAllMapped(_htmlEntity, (m) {
         : String.fromCharCode(code);
   }
   return switch (entity) {
-    'nbsp' => ' ',
+    'nbsp' => '\u00A0',
     'lt' => '<',
     'gt' => '>',
     'quot' => '"',
@@ -117,7 +118,12 @@ String mastodonHtmlToMarkdown(String html) {
       linkText.write(_escapeInline(t));
       return;
     }
-    if (atLineStart) t = t.trimLeft();
+    // Whitespace is significant in a status (a picture made of emoji), but
+    // markdown collapses runs of spaces and drops them at a line start, so
+    // they become non-breaking. Only space between tags is dropped.
+    if (atLineStart && RegExp(r'^[ \t\r\n]*$').hasMatch(t)) return;
+    t = t.replaceAllMapped(RegExp(' {2,}'), (m) => '\u00A0' * m[0]!.length);
+    if (atLineStart && t.startsWith(' ')) t = '\u00A0${t.substring(1)}';
     if (t.isEmpty) return;
     var escaped = _escapeInline(t);
     if (atLineStart) escaped = _escapeLineStart(escaped);
@@ -171,7 +177,12 @@ String mastodonHtmlToMarkdown(String html) {
   text(html.substring(pos));
   closeLink();
 
-  return out.toString().replaceAll(RegExp(r'\n{3,}'), '\n\n').trim();
+  // trim() would also strip the non-breaking spaces a picture starts with
+  return out
+      .toString()
+      .replaceAll(RegExp(r'\n{3,}'), '\n\n')
+      .replaceAll(RegExp(r'^[ \n\r\t]+'), '')
+      .replaceAll(RegExp(r'[ \u00A0\n\r\t]+$'), '');
 }
 
 ImageModel? _image(List<JsonMap> media) {
@@ -296,7 +307,12 @@ PostModel mastodonPost(JsonMap json, String domain) {
     read: false,
     crossPosts: [],
     flairs: [],
-    poll: null,
+    poll: s['poll'] == null
+        ? null
+        : PollModel.fromMastodon(
+            mastodonId(domain, s['id']! as String),
+            s['poll']! as JsonMap,
+          ),
     event: null,
     apId: (s['uri'] ?? s['url']) as String?,
     emojiReactions: null,
@@ -491,6 +507,21 @@ class MastodonAPI {
       [for (final s in _list(response.body)) mastodonPost(s, client.domain)],
       next == null ? null : Uri.parse(next).queryParameters['max_id'],
     );
+  }
+
+  /// Votes for the options (by index) and returns the status with the new
+  /// tallies. The vote goes to the poll's own id, not the status id.
+  Future<PostModel> votePoll(int id, List<int> choices) async {
+    final status = await _rawStatus(id);
+    final poll = status['poll'] as JsonMap?;
+    if (poll == null) throw StateError('This post has no poll');
+    final updated = (await client.post(
+      '/polls/${poll['id']}/votes',
+      body: {
+        'choices': [for (final c in choices) c.toString()],
+      },
+    )).bodyJson;
+    return mastodonPost({...status, 'poll': updated}, client.domain);
   }
 
   Future<JsonMap> _rawStatus(int id) async =>

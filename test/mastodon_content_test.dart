@@ -58,6 +58,7 @@ ServerClient _client(http.Response Function(http.Request) handler) =>
     );
 
 void main() {
+  _whitespaceTests();
   group('html to markdown', () {
     test('text that looks like markdown stays literal', () {
       expect(
@@ -262,6 +263,39 @@ void main() {
       final list = await api.timeline(FeedSource.all);
 
       expect(list.items, hasLength(1));
+    });
+  });
+}
+
+void _whitespaceTests() {
+  group('spacing in statuses', () {
+    test(
+      'runs of spaces are kept so pictures made of emoji hold their shape',
+      () {
+        expect(
+          mastodonHtmlToMarkdown('<p>   🌳🌳  <br />🌲 🌳  </p>'),
+          '\u00A0\u00A0\u00A0🌳🌳\u00A0\u00A0  \n🌲 🌳',
+        );
+      },
+    );
+
+    test('a single space between words stays a normal space', () {
+      expect(mastodonHtmlToMarkdown('<p>a b  c</p>'), 'a b\u00A0\u00A0c');
+    });
+
+    test('a single leading space is kept', () {
+      expect(mastodonHtmlToMarkdown('<p> a</p>'), '\u00A0a');
+    });
+
+    test('space between tags at a line start is dropped', () {
+      expect(mastodonHtmlToMarkdown('<p>a</p> <p>b</p>'), 'a\n\nb');
+    });
+
+    test('a line of non-breaking spaces stays a blank row', () {
+      expect(
+        mastodonHtmlToMarkdown('<p>a<br />&nbsp;<br />b</p>'),
+        'a  \n\u00A0  \nb',
+      );
     });
   });
 }

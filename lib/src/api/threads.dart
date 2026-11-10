@@ -295,7 +295,7 @@ class APIThreads {
   Future<PostModel> votePoll(int postId, List<int> choiceIds) async {
     switch (client.software) {
       case ServerSoftware.mastodon:
-        throw UnsupportedError('Mastodon: not supported here');
+        return MastodonAPI(client).votePoll(postId, choiceIds);
       case ServerSoftware.mbin:
         throw Exception('Tried to vote on a poll on mbin');
       case ServerSoftware.lemmy:
