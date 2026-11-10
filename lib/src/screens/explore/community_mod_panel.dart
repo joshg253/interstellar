@@ -259,17 +259,27 @@ class CommunityModReport extends StatefulWidget {
   State<CommunityModReport> createState() => _CommunityModReportState();
 }
 
+/// Whether the reported post is removed or deleted.
+bool postIsDeleted(PostVisibility? visibility) =>
+    visibility == PostVisibility.trashed ||
+    visibility == PostVisibility.soft_deleted;
+
+/// The report with its post marked removed or restored. The panel writes this
+/// back after a moderation action, so the row shows the real state even when
+/// it is rebuilt from the list.
+CommunityReportModel withSubjectDeleted(
+  CommunityReportModel report, {
+  required bool deleted,
+}) => report.subjectPost == null
+    ? report
+    : report.copyWith(
+        subjectPost: report.subjectPost!.copyWith(
+          visibility: deleted ? PostVisibility.trashed : PostVisibility.visible,
+        ),
+      );
+
 class _CommunityModReportState extends State<CommunityModReport> {
-  bool _deleted = false;
-
-  @override
-  void initState() {
-    super.initState();
-
-    _deleted =
-        widget.report.subjectPost?.visibility == PostVisibility.trashed ||
-        widget.report.subjectPost?.visibility == PostVisibility.soft_deleted;
-  }
+  bool get _deleted => postIsDeleted(widget.report.subjectPost?.visibility);
 
   void _modMenu(BuildContext context) {
     final ac = context.read<AppController>();
@@ -294,11 +304,17 @@ class _CommunityModReportState extends State<CommunityModReport> {
           ),
         ContextMenuItem(
           title: l(context).delete,
-          onTap: () async => ac.api.moderation.postDelete(
-            widget.report.subjectPost!.type,
-            widget.report.subjectPost!.id,
-            !_deleted,
-          ),
+          onTap: () async {
+            final delete = !_deleted;
+            await ac.api.moderation.postDelete(
+              widget.report.subjectPost!.type,
+              widget.report.subjectPost!.id,
+              delete,
+            );
+            widget.updateItem(
+              withSubjectDeleted(widget.report, deleted: delete),
+            );
+          },
         ),
         ContextMenuItem(
           title: l(context).banUser,
@@ -433,7 +449,9 @@ class _CommunityModReportState extends State<CommunityModReport> {
                               widget.report.id,
                               widget.report.subjectPost!.id,
                             );
-                        widget.updateItem(report);
+                        widget.updateItem(
+                          withSubjectDeleted(report, deleted: true),
+                        );
                       },
                       label: Text(l(context).delete),
                       style: OutlinedButton.styleFrom(
@@ -452,7 +470,9 @@ class _CommunityModReportState extends State<CommunityModReport> {
                               widget.report.id,
                               widget.report.subjectPost!.id,
                             );
-                        widget.updateItem(report);
+                        widget.updateItem(
+                          withSubjectDeleted(report, deleted: false),
+                        );
                       },
                       label: Text(l(context).restore),
                       style: OutlinedButton.styleFrom(

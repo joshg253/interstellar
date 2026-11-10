@@ -58,6 +58,21 @@ extension ScopedApi on BuildContext {
       AccountScope.maybeOf(this)?.api ?? read<AppController>().api;
 }
 
+/// The software to branch on: the scoped account's when there is one, else the
+/// selected account's.
+ServerSoftware scopedSoftware(
+  ServerSoftware? scoped,
+  ServerSoftware selected,
+) => scoped ?? selected;
+
+extension ScopedSoftware on BuildContext {
+  /// [scopedSoftware] for the enclosing scope and the selected account.
+  ServerSoftware get software => scopedSoftware(
+    AccountScope.maybeOf(this)?.api.client.software,
+    read<AppController>().serverSoftware,
+  );
+}
+
 extension ScopedTarget on BuildContext {
   /// [scopedTarget] for the enclosing scope and the selected account.
   ({String name, int? id}) targetFor(String name, int id) {

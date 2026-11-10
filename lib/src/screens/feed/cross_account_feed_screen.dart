@@ -765,11 +765,7 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
                     ]),
                   );
                   if (actingMissing && _overrides[key] == null) {
-                    display = display.copyWith(
-                      myVote: null,
-                      myBoost: null,
-                      bookmarks: null,
-                    );
+                    display = withoutActorVotes(display);
                   }
                   return AccountScope(
                     account: shown,
@@ -823,3 +819,8 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
     );
   }
 }
+
+/// A copy shown in place of the acting account's own: its vote state is not
+/// yours, but bookmarks stay since actions run as the account it came from.
+PostModel withoutActorVotes(PostModel post) =>
+    post.copyWith(myVote: null, myBoost: null);
