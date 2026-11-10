@@ -11,6 +11,7 @@ import 'package:interstellar/src/models/comment.dart';
 import 'package:interstellar/src/models/post.dart';
 import 'package:interstellar/src/utils/ap_urls.dart';
 import 'package:interstellar/src/utils/utils.dart';
+import 'package:interstellar/src/widgets/account_scope.dart';
 import 'package:interstellar/src/widgets/ban_dialog.dart';
 import 'package:interstellar/src/widgets/content_item/content_info.dart';
 import 'package:interstellar/src/widgets/content_item/content_item.dart';
@@ -89,8 +90,12 @@ class _PostCommentState extends State<PostComment> {
   Widget build(BuildContext context) {
     final ac = context.watch<AppController>();
 
+    // A copy shown in place of the acting account's is read-only, so it
+    // cannot be moderated either.
     final canModerate =
-        widget.userCanModerate || (widget.comment.canAuthUserModerate ?? false);
+        (widget.userCanModerate ||
+            (widget.comment.canAuthUserModerate ?? false)) &&
+        (whenLoggedIn(context, true) ?? false);
 
     final contentItem = ContentItem(
       originInstance: getNameHost(context, widget.comment.user.name),
@@ -110,7 +115,7 @@ class _PostCommentState extends State<PostComment> {
       boosts: widget.comment.boosts,
       isBoosted: widget.comment.myBoost ?? false,
       onBoost: whenLoggedIn(context, () async {
-        final newValue = await ac.api.comments.boost(
+        final newValue = await context.scopedApi.comments.boost(
           widget.comment.postType,
           widget.comment.id,
         );
@@ -123,7 +128,7 @@ class _PostCommentState extends State<PostComment> {
       }),
       upVotes: widget.comment.upvotes,
       onUpVote: whenLoggedIn(context, () async {
-        final newValue = await ac.api.comments.vote(
+        final newValue = await context.scopedApi.comments.vote(
           widget.comment.postType,
           widget.comment.id,
           1,
@@ -140,7 +145,7 @@ class _PostCommentState extends State<PostComment> {
       downVotes: widget.comment.downvotes,
       isDownVoted: widget.comment.myVote == -1,
       onDownVote: whenLoggedIn(context, () async {
-        final newValue = await ac.api.comments.vote(
+        final newValue = await context.scopedApi.comments.vote(
           widget.comment.postType,
           widget.comment.id,
           -1,
@@ -162,7 +167,7 @@ class _PostCommentState extends State<PostComment> {
               XFile? image,
               String? alt,
             }) async {
-              final newSubComment = await ac.api.comments.create(
+              final newSubComment = await context.scopedApi.comments.create(
                 widget.comment.postType,
                 widget.comment.postId,
                 body,
@@ -180,7 +185,7 @@ class _PostCommentState extends State<PostComment> {
               );
             }),
       onReport: whenLoggedIn(context, (reason) async {
-        await ac.api.comments.report(
+        await context.scopedApi.comments.report(
           widget.comment.postType,
           widget.comment.id,
           reason,
@@ -188,7 +193,7 @@ class _PostCommentState extends State<PostComment> {
       }),
       onEdit: widget.comment.visibility != PostVisibility.soft_deleted
           ? whenLoggedIn(context, (body) async {
-              final newValue = await ac.api.comments.edit(
+              final newValue = await context.scopedApi.comments.edit(
                 widget.comment.postType,
                 widget.comment.id,
                 body,
@@ -204,7 +209,7 @@ class _PostCommentState extends State<PostComment> {
           : null,
       onDelete: widget.comment.visibility != PostVisibility.soft_deleted
           ? whenLoggedIn(context, () async {
-              await ac.api.comments.delete(
+              await context.scopedApi.comments.delete(
                 widget.comment.postType,
                 widget.comment.id,
               );
@@ -225,7 +230,7 @@ class _PostCommentState extends State<PostComment> {
       onModerateDelete: !canModerate
           ? null
           : () async {
-              final newValue = await ac.api.moderation.commentDelete(
+              final newValue = await context.scopedApi.moderation.commentDelete(
                 widget.comment.postType,
                 widget.comment.id,
                 true,
@@ -247,11 +252,13 @@ class _PostCommentState extends State<PostComment> {
                 community: widget.comment.community,
               );
             },
-      onModerateLock: !canModerate || ac.serverSoftware != ServerSoftware.piefed
+      onModerateLock:
+          !canModerate ||
+              context.scopedApi.client.software != ServerSoftware.piefed
           ? null
           : () async {
               widget.onUpdate(
-                await ac.api.moderation.commentLock(
+                await context.scopedApi.moderation.commentLock(
                   widget.comment.postType,
                   widget.comment.id,
                   !widget.comment.isLocked,
@@ -265,23 +272,24 @@ class _PostCommentState extends State<PostComment> {
       activeBookmarkLists: widget.comment.bookmarks,
       loadPossibleBookmarkLists: whenLoggedIn(
         context,
-        () async => (await ac.api.bookmark.getBookmarkLists())
+        () async => (await context.scopedApi.bookmark.getBookmarkLists())
             .map((list) => list.name)
             .toList(),
         matchesSoftware: ServerSoftware.mbin,
       ),
       onAddBookmark: whenLoggedIn(context, () async {
-        final newBookmarks = await ac.api.bookmark.addBookmarkToDefault(
-          subjectType: BookmarkListSubject.fromPostType(
-            postType: widget.comment.postType,
-            isComment: true,
-          ),
-          subjectId: widget.comment.id,
-        );
+        final newBookmarks = await context.scopedApi.bookmark
+            .addBookmarkToDefault(
+              subjectType: BookmarkListSubject.fromPostType(
+                postType: widget.comment.postType,
+                isComment: true,
+              ),
+              subjectId: widget.comment.id,
+            );
         widget.onUpdate(widget.comment.copyWith(bookmarks: newBookmarks));
       }),
       onAddBookmarkToList: whenLoggedIn(context, (String listName) async {
-        final newBookmarks = await ac.api.bookmark.addBookmarkToList(
+        final newBookmarks = await context.scopedApi.bookmark.addBookmarkToList(
           subjectType: BookmarkListSubject.fromPostType(
             postType: widget.comment.postType,
             isComment: true,
@@ -292,24 +300,26 @@ class _PostCommentState extends State<PostComment> {
         widget.onUpdate(widget.comment.copyWith(bookmarks: newBookmarks));
       }, matchesSoftware: ServerSoftware.mbin),
       onRemoveBookmark: whenLoggedIn(context, () async {
-        final newBookmarks = await ac.api.bookmark.removeBookmarkFromAll(
-          subjectType: BookmarkListSubject.fromPostType(
-            postType: widget.comment.postType,
-            isComment: true,
-          ),
-          subjectId: widget.comment.id,
-        );
+        final newBookmarks = await context.scopedApi.bookmark
+            .removeBookmarkFromAll(
+              subjectType: BookmarkListSubject.fromPostType(
+                postType: widget.comment.postType,
+                isComment: true,
+              ),
+              subjectId: widget.comment.id,
+            );
         widget.onUpdate(widget.comment.copyWith(bookmarks: newBookmarks));
       }),
       onRemoveBookmarkFromList: whenLoggedIn(context, (String listName) async {
-        final newBookmarks = await ac.api.bookmark.removeBookmarkFromList(
-          subjectType: BookmarkListSubject.fromPostType(
-            postType: widget.comment.postType,
-            isComment: true,
-          ),
-          subjectId: widget.comment.id,
-          listName: listName,
-        );
+        final newBookmarks = await context.scopedApi.bookmark
+            .removeBookmarkFromList(
+              subjectType: BookmarkListSubject.fromPostType(
+                postType: widget.comment.postType,
+                isComment: true,
+              ),
+              subjectId: widget.comment.id,
+              listName: listName,
+            );
         widget.onUpdate(widget.comment.copyWith(bookmarks: newBookmarks));
       }, matchesSoftware: ServerSoftware.mbin),
       notificationControlStatus: widget.comment.notificationControlStatus,
@@ -317,7 +327,7 @@ class _PostCommentState extends State<PostComment> {
           widget.comment.notificationControlStatus == null
           ? null
           : (newStatus) async {
-              await ac.api.notifications.updateControl(
+              await context.scopedApi.notifications.updateControl(
                 targetType: NotificationControlUpdateTargetType.comment,
                 targetId: widget.comment.id,
                 status: newStatus,
@@ -333,7 +343,7 @@ class _PostCommentState extends State<PostComment> {
       onEmojiReact: widget.comment.emojiReactions == null
           ? null
           : whenLoggedIn(context, (emoji) async {
-              final newValue = await ac.api.comments.vote(
+              final newValue = await context.scopedApi.comments.vote(
                 widget.comment.postType,
                 widget.comment.id,
                 1,

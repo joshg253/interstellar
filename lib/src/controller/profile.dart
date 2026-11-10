@@ -233,7 +233,7 @@ abstract class ProfileRequired with _$ProfileRequired {
     hideActionButtons: false,
     hideFeedUIOnScroll: false,
     globalTextScale: 1,
-    alwaysShowInstance: false,
+    alwaysShowInstance: true,
     coverMediaMarkedSensitive: true,
     fullImageSizeThreads: false,
     fullImageSizeMicroblogs: false,

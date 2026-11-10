@@ -9,6 +9,7 @@ import 'package:interstellar/src/screens/explore/user_item.dart';
 import 'package:interstellar/src/screens/settings/feed_settings_screen.dart';
 import 'package:interstellar/src/utils/ap_urls.dart';
 import 'package:interstellar/src/utils/utils.dart';
+import 'package:interstellar/src/widgets/account_scope.dart';
 import 'package:interstellar/src/widgets/context_menu.dart';
 import 'package:interstellar/src/widgets/loading_button.dart';
 import 'package:interstellar/src/widgets/star_button.dart';
@@ -24,6 +25,8 @@ Future<void> showCommunityMenu(
   bool navigateOption = false,
 }) async {
   final ac = context.read<AppController>();
+  // The account whose copy of the community is shown, not the selected one.
+  final api = context.scopedApi;
 
   if (detailedCommunity == null && community == null) return;
 
@@ -34,7 +37,9 @@ Future<void> showCommunityMenu(
 
   final isModerator =
       !(detailedCommunity == null) &&
-      detailedCommunity.moderators.any((mod) => mod.name == ac.localName);
+      detailedCommunity.moderators.any(
+        (mod) => isAccountName(mod.name, ac.selectedAccount),
+      );
 
   return ContextMenu(
     actions: [
@@ -43,7 +48,7 @@ Future<void> showCommunityMenu(
           isSubscribed: detailedCommunity?.isUserSubscribed,
           subscriptionCount: detailedCommunity?.subscriptionsCount,
           onSubscribe: (selected) async {
-            final newValue = await ac.api.community.subscribe(
+            final newValue = await api.community.subscribe(
               detailedCommunity?.id ?? community!.id,
               selected,
             );
@@ -64,7 +69,7 @@ Future<void> showCommunityMenu(
         ContextMenuAction(
           child: LoadingIconButton(
             onPressed: () async {
-              final newValue = await ac.api.community.block(
+              final newValue = await api.community.block(
                 detailedCommunity?.id ?? community!.id,
                 !(detailedCommunity?.isBlockedByUser ?? false),
               );
@@ -138,7 +143,7 @@ Future<void> showCommunityMenu(
         ),
       if (detailedCommunity != null &&
           detailedCommunity.owner != null &&
-          detailedCommunity.owner!.name == ac.localName)
+          isAccountName(detailedCommunity.owner!.name, ac.selectedAccount))
         ContextMenuItem(
           title: l(context).ownerPanel,
           onTap: () => context.router.push(

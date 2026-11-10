@@ -6,6 +6,7 @@ import 'package:interstellar/src/controller/router.gr.dart';
 import 'package:interstellar/src/controller/server.dart';
 import 'package:interstellar/src/utils/language.dart';
 import 'package:interstellar/src/utils/utils.dart';
+import 'package:interstellar/src/widgets/account_scope.dart';
 import 'package:interstellar/src/widgets/content_item/content_item.dart';
 import 'package:interstellar/src/widgets/context_menu.dart';
 import 'package:interstellar/src/widgets/emoji_picker/emoji_picker.dart';
@@ -229,7 +230,10 @@ Future<void> showContentMenu(
         ContextMenuItem(
           title: l(context).editFlairs,
           onTap: () async {
-            final community = await ac.api.community.get(widget.community!.id);
+            // The sheet below is outside the account scope, so take the
+            // scoped API first.
+            final api = context.scopedApi;
+            final community = await api.community.get(widget.community!.id);
             if (!context.mounted) return;
             showModalBottomSheet<void>(
               context: context,
@@ -237,7 +241,7 @@ Future<void> showContentMenu(
                 flairs: widget.flairs,
                 availableFlairs: community.flairs,
                 onUpdate: (flairs) async {
-                  final post = await ac.api.threads.assignFlairs(
+                  final post = await api.threads.assignFlairs(
                     widget.id,
                     flairs.map((flair) => flair.id).toList(),
                   );

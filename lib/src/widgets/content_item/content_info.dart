@@ -7,6 +7,7 @@ import 'package:interstellar/src/models/community.dart';
 import 'package:interstellar/src/models/user.dart';
 import 'package:interstellar/src/utils/language.dart';
 import 'package:interstellar/src/utils/utils.dart';
+import 'package:interstellar/src/widgets/account_scope.dart';
 import 'package:interstellar/src/widgets/display_name.dart';
 import 'package:interstellar/src/widgets/tags/tag_widget.dart';
 import 'package:interstellar/src/widgets/user_status_icons.dart';
@@ -148,9 +149,12 @@ class ContentInfo extends StatelessWidget {
                     user!.name,
                     displayName: user!.displayName,
                     icon: user!.avatar,
-                    onTap: () => context.router.push(
-                      UserRoute(username: user!.name, userId: user!.id),
-                    ),
+                    onTap: () {
+                      final target = context.targetFor(user!.name, user!.id);
+                      context.router.push(
+                        UserRoute(username: target.name, userId: target.id),
+                      );
+                    },
                   ),
                 ),
                 UserStatusIcons(cakeDay: user!.createdAt, isBot: user!.isBot),
@@ -173,18 +177,24 @@ class ContentInfo extends StatelessWidget {
             ),
           );
 
-    final communityWidget = community == null
+    final communityWidget = community == null || community!.isNone
         ? null
         : Flexible(
             child: DisplayName(
               community!.name,
               icon: community!.icon,
-              onTap: () => context.router.push(
-                CommunityRoute(
-                  communityName: community!.name,
-                  communityId: community!.id,
-                ),
-              ),
+              onTap: () {
+                final target = context.targetFor(
+                  community!.name,
+                  community!.id,
+                );
+                context.router.push(
+                  CommunityRoute(
+                    communityName: target.name,
+                    communityId: target.id,
+                  ),
+                );
+              },
             ),
           );
 

@@ -7,6 +7,7 @@ import 'package:interstellar/src/controller/server.dart';
 import 'package:interstellar/src/models/post.dart';
 import 'package:interstellar/src/utils/ap_urls.dart';
 import 'package:interstellar/src/utils/utils.dart';
+import 'package:interstellar/src/widgets/account_scope.dart';
 import 'package:interstellar/src/widgets/ban_dialog.dart';
 import 'package:interstellar/src/widgets/content_item/content_item.dart';
 import 'package:interstellar/src/widgets/super_hero.dart';
@@ -85,8 +86,12 @@ class _PostItemState extends State<PostItem> {
   Widget build(BuildContext context) {
     final ac = context.watch<AppController>();
 
+    // A copy shown in place of the acting account's is read-only, so it
+    // cannot be moderated either.
     final canModerate =
-        widget.userCanModerate || (widget.item.canAuthUserModerate ?? false);
+        (widget.userCanModerate ||
+            (widget.item.canAuthUserModerate ?? false)) &&
+        (whenLoggedIn(context, true) ?? false);
 
     return SuperHero(
       tag: widget.item.toString(),
@@ -133,10 +138,12 @@ class _PostItemState extends State<PostItem> {
           isBoosted: widget.item.myBoost ?? false,
           onBoost: whenLoggedIn(context, () async {
             widget.onUpdate(
-              (await ac.markAsRead([
+              (await context.markPostsRead([
                 await switch (widget.item.type) {
-                  PostType.thread => ac.api.threads.boost(widget.item.id),
-                  PostType.microblog => ac.api.microblogs.putVote(
+                  PostType.thread => context.scopedApi.threads.boost(
+                    widget.item.id,
+                  ),
+                  PostType.microblog => context.scopedApi.microblogs.putVote(
                     widget.item.id,
                     1,
                   ),
@@ -148,16 +155,15 @@ class _PostItemState extends State<PostItem> {
           isUpVoted: widget.item.myVote == 1,
           onUpVote: whenLoggedIn(context, () async {
             widget.onUpdate(
-              (await ac.markAsRead([
+              (await context.markPostsRead([
                 await switch (widget.item.type) {
-                  PostType.thread => ac.api.threads.vote(
+                  PostType.thread => context.scopedApi.threads.vote(
                     widget.item.id,
                     1,
                     widget.item.myVote == 1 ? 0 : 1,
                   ),
-                  PostType.microblog => ac.api.microblogs.putFavorite(
-                    widget.item.id,
-                  ),
+                  PostType.microblog =>
+                    context.scopedApi.microblogs.putFavorite(widget.item.id),
                 },
               ], true)).first,
             );
@@ -166,14 +172,14 @@ class _PostItemState extends State<PostItem> {
           isDownVoted: widget.item.myVote == -1,
           onDownVote: whenLoggedIn(context, () async {
             widget.onUpdate(
-              (await ac.markAsRead([
+              (await context.markPostsRead([
                 await switch (widget.item.type) {
-                  PostType.thread => ac.api.threads.vote(
+                  PostType.thread => context.scopedApi.threads.vote(
                     widget.item.id,
                     -1,
                     widget.item.myVote == -1 ? 0 : -1,
                   ),
-                  PostType.microblog => ac.api.microblogs.putVote(
+                  PostType.microblog => context.scopedApi.microblogs.putVote(
                     widget.item.id,
                     -1,
                   ),
@@ -185,8 +191,11 @@ class _PostItemState extends State<PostItem> {
           onReply: widget.item.isLocked ? null : widget.onReply,
           onReport: whenLoggedIn(context, (reason) async {
             await switch (widget.item.type) {
-              PostType.thread => ac.api.threads.report(widget.item.id, reason),
-              PostType.microblog => ac.api.microblogs.report(
+              PostType.thread => context.scopedApi.threads.report(
+                widget.item.id,
+                reason,
+              ),
+              PostType.microblog => context.scopedApi.microblogs.report(
                 widget.item.id,
                 reason,
               ),
@@ -196,25 +205,28 @@ class _PostItemState extends State<PostItem> {
           onDelete: widget.onDelete,
           onMarkAsRead: () async {
             widget.onUpdate(
-              (await ac.markAsRead([widget.item], !widget.item.read)).first,
+              (await context.markPostsRead([
+                widget.item,
+              ], !widget.item.read)).first,
             );
           },
           onModeratePin: !canModerate
               ? null
               : () async {
                   widget.onUpdate(
-                    await ac.api.moderation.postPin(
+                    await context.scopedApi.moderation.postPin(
                       widget.item.type,
                       widget.item.id,
                       !widget.item.isPinned,
                     ),
                   );
                 },
-          onModerateMarkNSFW: !canModerate || !ac.api.moderation.canMarkNSFW
+          onModerateMarkNSFW:
+              !canModerate || !context.scopedApi.moderation.canMarkNSFW
               ? null
               : () async {
                   widget.onUpdate(
-                    await ac.api.moderation.postMarkNSFW(
+                    await context.scopedApi.moderation.postMarkNSFW(
                       widget.item.type,
                       widget.item.id,
                       !widget.item.isNSFW,
@@ -225,7 +237,7 @@ class _PostItemState extends State<PostItem> {
               ? null
               : () async {
                   widget.onUpdate(
-                    await ac.api.moderation.postDelete(
+                    await context.scopedApi.moderation.postDelete(
                       widget.item.type,
                       widget.item.id,
                       true,
@@ -245,7 +257,7 @@ class _PostItemState extends State<PostItem> {
               ? null
               : () async {
                   widget.onUpdate(
-                    await ac.api.moderation.postLock(
+                    await context.scopedApi.moderation.postLock(
                       widget.item.type,
                       widget.item.id,
                       !widget.item.isLocked,
@@ -261,53 +273,57 @@ class _PostItemState extends State<PostItem> {
           activeBookmarkLists: widget.item.bookmarks,
           loadPossibleBookmarkLists: whenLoggedIn(
             context,
-            () async => (await ac.api.bookmark.getBookmarkLists())
+            () async => (await context.scopedApi.bookmark.getBookmarkLists())
                 .map((list) => list.name)
                 .toList(),
             matchesSoftware: ServerSoftware.mbin,
           ),
           onAddBookmark: whenLoggedIn(context, () async {
-            final newBookmarks = await ac.api.bookmark.addBookmarkToDefault(
-              subjectType: BookmarkListSubject.fromPostType(
-                postType: widget.item.type,
-                isComment: false,
-              ),
-              subjectId: widget.item.id,
-            );
+            final newBookmarks = await context.scopedApi.bookmark
+                .addBookmarkToDefault(
+                  subjectType: BookmarkListSubject.fromPostType(
+                    postType: widget.item.type,
+                    isComment: false,
+                  ),
+                  subjectId: widget.item.id,
+                );
             widget.onUpdate(widget.item.copyWith(bookmarks: newBookmarks));
           }),
           onAddBookmarkToList: whenLoggedIn(context, (String listName) async {
-            final newBookmarks = await ac.api.bookmark.addBookmarkToList(
-              subjectType: BookmarkListSubject.fromPostType(
-                postType: widget.item.type,
-                isComment: false,
-              ),
-              subjectId: widget.item.id,
-              listName: listName,
-            );
+            final newBookmarks = await context.scopedApi.bookmark
+                .addBookmarkToList(
+                  subjectType: BookmarkListSubject.fromPostType(
+                    postType: widget.item.type,
+                    isComment: false,
+                  ),
+                  subjectId: widget.item.id,
+                  listName: listName,
+                );
             widget.onUpdate(widget.item.copyWith(bookmarks: newBookmarks));
           }, matchesSoftware: ServerSoftware.mbin),
           onRemoveBookmark: whenLoggedIn(context, () async {
-            final newBookmarks = await ac.api.bookmark.removeBookmarkFromAll(
-              subjectType: BookmarkListSubject.fromPostType(
-                postType: widget.item.type,
-                isComment: false,
-              ),
-              subjectId: widget.item.id,
-            );
+            final newBookmarks = await context.scopedApi.bookmark
+                .removeBookmarkFromAll(
+                  subjectType: BookmarkListSubject.fromPostType(
+                    postType: widget.item.type,
+                    isComment: false,
+                  ),
+                  subjectId: widget.item.id,
+                );
             widget.onUpdate(widget.item.copyWith(bookmarks: newBookmarks));
           }),
           onRemoveBookmarkFromList: whenLoggedIn(context, (
             String listName,
           ) async {
-            final newBookmarks = await ac.api.bookmark.removeBookmarkFromList(
-              subjectType: BookmarkListSubject.fromPostType(
-                postType: widget.item.type,
-                isComment: false,
-              ),
-              subjectId: widget.item.id,
-              listName: listName,
-            );
+            final newBookmarks = await context.scopedApi.bookmark
+                .removeBookmarkFromList(
+                  subjectType: BookmarkListSubject.fromPostType(
+                    postType: widget.item.type,
+                    isComment: false,
+                  ),
+                  subjectId: widget.item.id,
+                  listName: listName,
+                );
             widget.onUpdate(widget.item.copyWith(bookmarks: newBookmarks));
           }, matchesSoftware: ServerSoftware.mbin),
           notificationControlStatus: widget.item.notificationControlStatus,
@@ -315,7 +331,7 @@ class _PostItemState extends State<PostItem> {
               widget.item.notificationControlStatus == null
               ? null
               : (newStatus) async {
-                  await ac.api.notifications.updateControl(
+                  await context.scopedApi.notifications.updateControl(
                     targetType: switch (widget.item.type) {
                       PostType.thread =>
                         NotificationControlUpdateTargetType.entry,
@@ -351,9 +367,9 @@ class _PostItemState extends State<PostItem> {
               ? null
               : whenLoggedIn(context, (emoji) async {
                   widget.onUpdate(
-                    (await ac.markAsRead([
+                    (await context.markPostsRead([
                       await switch (widget.item.type) {
-                        PostType.thread => ac.api.threads.vote(
+                        PostType.thread => context.scopedApi.threads.vote(
                           widget.item.id,
                           1,
                           1,
