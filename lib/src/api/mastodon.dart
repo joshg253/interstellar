@@ -187,7 +187,7 @@ String mastodonHtmlToMarkdown(String html) {
 
 ImageModel? _image(List<JsonMap> media) {
   for (final m in media) {
-    if (m['type'] != 'image' && m['type'] != 'gifv') continue;
+    if (m['type'] != 'image') continue;
     // Processing or uncached remote media has no `url`.
     final src = _safeWebUrl(
       (m['url'] ?? m['remote_url'] ?? m['preview_url']) as String?,
@@ -204,6 +204,16 @@ ImageModel? _image(List<JsonMap> media) {
   }
   return null;
 }
+
+/// Video and gifv attachments (a gifv is a looping mp4) as markdown the body's
+/// video player renders.
+String _videos(List<JsonMap> media) => [
+  for (final m in media)
+    if (m['type'] == 'video' || m['type'] == 'gifv')
+      if (_safeWebUrl((m['url'] ?? m['remote_url']) as String?) case final src?
+          when src.startsWith('https:'))
+        '![video/mp4](${_markdownTarget(src)})',
+].join('\n\n');
 
 ImageModel? _avatar(String? url) {
   final src = _safeWebUrl(url);
@@ -256,7 +266,11 @@ String _body(JsonMap s) {
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim(),
   );
-  final text = mastodonHtmlToMarkdown((s['content'] as String?) ?? '');
+  final videos = _videos(((s['media_attachments'] as List?) ?? []).cast());
+  final text = [
+    mastodonHtmlToMarkdown((s['content'] as String?) ?? ''),
+    videos,
+  ].where((p) => p.isNotEmpty).join('\n\n');
   return warning.isEmpty ? text : '::: spoiler $warning\n$text\n:::';
 }
 

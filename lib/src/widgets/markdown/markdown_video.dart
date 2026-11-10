@@ -4,7 +4,10 @@ import 'package:interstellar/src/widgets/video.dart';
 import 'package:markdown/markdown.dart' as md;
 
 class VideoMarkdownSyntax extends md.InlineSyntax {
-  VideoMarkdownSyntax() : super(r'!\[video\/mp4\]\((https:\/\/[^\s]+\.mp4)\)');
+  // The marker is what makes it a video, so the address needs no extension
+  // (media proxies have none).
+  VideoMarkdownSyntax()
+    : super(r'!\[video\/mp4\]\((https:\/\/[^\s)]+)\)', caseSensitive: false);
 
   @override
   bool onMatch(md.InlineParser parser, Match match) {
