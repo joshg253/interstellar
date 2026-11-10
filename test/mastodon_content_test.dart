@@ -214,6 +214,77 @@ void main() {
 
       expect(post.image, isNull);
     });
+
+    test('a video or gifv is a player in the body, not an image', () {
+      final post = mastodonPost(
+        _status(
+          '1',
+          media: [
+            {'type': 'gifv', 'url': 'https://cdn.example.com/g.mp4'},
+            {'type': 'video', 'url': 'https://cdn.example.com/v.webm'},
+            {'type': 'video', 'url': null, 'remote_url': 'javascript:x'},
+          ],
+        ),
+        _host,
+      );
+
+      expect(post.image, isNull);
+      expect(
+        post.body,
+        'Hello\n\n![video/mp4](https://cdn.example.com/g.mp4)'
+        '\n\n![video/mp4](https://cdn.example.com/v.webm)',
+      );
+    });
+
+    test('a video under a content warning stays behind it', () {
+      final post = mastodonPost(
+        _status(
+          '1',
+          spoiler: 'cw',
+          media: [
+            {'type': 'video', 'url': 'https://cdn.example.com/v.mp4'},
+          ],
+        ),
+        _host,
+      );
+
+      expect(
+        post.body,
+        '::: spoiler cw\nHello\n\n![video/mp4](https://cdn.example.com/v.mp4)'
+        '\n:::',
+      );
+    });
+
+    test('only https videos are passed on, with the address escaped', () {
+      final post = mastodonPost(
+        _status(
+          '1',
+          media: [
+            {'type': 'video', 'url': 'http://cdn.example.com/v.mp4'},
+            {'type': 'video', 'url': 'https://cdn.example.com/a(b) c.mp4'},
+          ],
+        ),
+        _host,
+      );
+
+      expect(post.body, isNot(contains('http://')));
+      expect(post.body, contains('a%28b%29%20c.mp4'));
+    });
+
+    test('a video in a reply is a player too', () {
+      final c = mastodonComment(
+        _status(
+          '2',
+          media: [
+            {'type': 'video', 'url': 'https://cdn.example.com/v.mp4'},
+          ],
+        ),
+        _host,
+        rootRaw: '1',
+      );
+
+      expect(c.body, contains('![video/mp4](https://cdn.example.com/v.mp4)'));
+    });
   });
 
   group('timeline', () {

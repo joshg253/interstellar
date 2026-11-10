@@ -49,7 +49,12 @@ class Markdown extends StatelessWidget {
         }
       },
       imageBuilder: (uri, title, alt) {
-        if (uri.path.split('.').last == 'mp4') {
+        if (const [
+          'mp4',
+          'webm',
+          'mov',
+          'm4v',
+        ].contains(uri.path.split('.').last.toLowerCase())) {
           return VideoPlayer(uri, enableBlur: nsfw);
         }
         return AdvancedImage(
