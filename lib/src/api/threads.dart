@@ -61,6 +61,7 @@ class APIThreads {
     FeedSort? sort,
     bool combined = false,
     bool includeBoosts = false,
+    bool? showRead,
   }) async {
     switch (client.software) {
       case ServerSoftware.mastodon:
@@ -135,7 +136,7 @@ class APIThreads {
               'sort': lemmyFeedSortMap[sort],
               // Lemmy otherwise hides read posts per the account's server-side
               // setting; the app's own hide-read toggle decides instead.
-              'show_read': 'true',
+              'show_read': (showRead ?? true).toString(),
             }..addAll(switch (source) {
               FeedSource.all => {'type_': 'All'},
               FeedSource.local => {'type_': 'Local'},

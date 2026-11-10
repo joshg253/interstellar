@@ -1,13 +1,12 @@
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:interstellar/src/controller/controller.dart';
 import 'package:interstellar/src/controller/router.gr.dart';
 import 'package:interstellar/src/models/community.dart';
 import 'package:interstellar/src/utils/utils.dart';
+import 'package:interstellar/src/widgets/account_scope.dart';
 import 'package:interstellar/src/widgets/avatar.dart';
 import 'package:material_symbols_icons/symbols.dart';
-import 'package:provider/provider.dart';
 
 class CommunityPicker extends StatefulWidget {
   const CommunityPicker({
@@ -26,12 +25,20 @@ class CommunityPicker extends StatefulWidget {
 }
 
 class _CommunityPickerState extends State<CommunityPicker> {
+  /// `name@host`, so two communities with the same name on different servers
+  /// can't be confused.
+  String _address(DetailedCommunityModel community) => communityGlobalName(
+    community.name,
+    community.apId,
+    context.scopedApi.client.domain,
+  ).substring(1);
+
   @override
   Widget build(BuildContext context) {
     return Autocomplete<DetailedCommunityModel>(
       initialValue: widget.value == null
           ? null
-          : TextEditingValue(text: widget.value!.name),
+          : TextEditingValue(text: _address(widget.value!)),
       fieldViewBuilder:
           (context, textEditingController, focusNode, onFieldSubmitted) =>
               TextField(
@@ -67,13 +74,11 @@ class _CommunityPickerState extends State<CommunityPicker> {
               ),
       optionsBuilder: (TextEditingValue textEditingValue) async {
         final exactFuture =
-            (context.read<AppController>().api.community.getByName(
-                      textEditingValue.text,
-                    )
+            (context.scopedApi.community.getByName(textEditingValue.text)
                     as Future<DetailedCommunityModel?>)
                 .onError((error, stackTrace) => null);
 
-        final searchFuture = context.read<AppController>().api.community.list(
+        final searchFuture = context.scopedApi.community.list(
           search: nullIfEmpty(textEditingValue.text),
         );
 
@@ -94,7 +99,7 @@ class _CommunityPickerState extends State<CommunityPicker> {
                 ),
               ];
       },
-      displayStringForOption: (option) => option.name,
+      displayStringForOption: _address,
       onSelected: widget.onChange,
       optionsViewBuilder: (context, onSelected, options) => Align(
         alignment: AlignmentDirectional.topStart,
@@ -139,7 +144,7 @@ class _CommunityPickerState extends State<CommunityPicker> {
                                   vertical: 12,
                                 ),
                                 child: Text(
-                                  option.name,
+                                  _address(option),
                                   softWrap: false,
                                   overflow: TextOverflow.fade,
                                 ),

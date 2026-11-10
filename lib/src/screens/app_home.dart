@@ -43,7 +43,7 @@ class AppHome extends StatefulWidget {
 class _AppHomeState extends State<AppHome> {
   int _navIndex = 0;
   Key _feedKey = UniqueKey();
-  Key _exploreKey = UniqueKey();
+  final Key _exploreKey = UniqueKey();
   Key _accountKey = UniqueKey();
   Key _inboxKey = UniqueKey();
   final ScrollController _feedScrollController = ScrollController();
@@ -56,11 +56,15 @@ class _AppHomeState extends State<AppHome> {
 
       switch (newIndex) {
         case 0:
-          _feedScrollController.animateTo(
-            _feedScrollController.position.minScrollExtent,
-            duration: Durations.long1,
-            curve: Curves.easeInOut,
-          );
+          // The list may not be attached (e.g. the shell was rebuilt while
+          // another tab was showing), and then there is nothing to scroll.
+          if (_feedScrollController.hasClients) {
+            _feedScrollController.animateTo(
+              _feedScrollController.positions.first.minScrollExtent,
+              duration: Durations.long1,
+              curve: Curves.easeInOut,
+            );
+          }
           return;
         case 1:
           _exploreFocusNode.requestFocus();
@@ -125,8 +129,8 @@ class _AppHomeState extends State<AppHome> {
     final ac = context.read<AppController>();
     ac.refreshState = () {
       setState(() {
-        _feedKey = UniqueKey();
-        _exploreKey = UniqueKey();
+        // The feed and Explore adopt the new selected account themselves, so
+        // they keep their state (scroll position, search) across a switch.
         _accountKey = UniqueKey();
         _inboxKey = UniqueKey();
       });
@@ -138,7 +142,7 @@ class _AppHomeState extends State<AppHome> {
       onPopInvokedWithResult: _handleExit,
       child: AutoTabsRouter(
         routes: [
-          HomeRoute(key: _feedKey, scrollController: _feedScrollController),
+          FeedHomeRoute(key: _feedKey, scrollController: _feedScrollController),
           ExploreTab(key: _exploreKey, focusNode: _exploreFocusNode),
           SelfFeed(key: _accountKey),
           InboxRoute(key: _inboxKey),
@@ -147,6 +151,9 @@ class _AppHomeState extends State<AppHome> {
         homeIndex: 0,
         builder: (context, child) {
           final tabsRouter = AutoTabsRouter.of(context);
+          // The router is the truth; the shell can be rebuilt (e.g. on an
+          // account switch) while another tab stays showing.
+          _navIndex = tabsRouter.activeIndex;
           final notCompact = !Breakpoints.isCompact(context);
 
           return Scaffold(

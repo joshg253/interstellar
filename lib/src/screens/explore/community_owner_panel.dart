@@ -6,6 +6,7 @@ import 'package:interstellar/src/models/community.dart';
 import 'package:interstellar/src/models/user.dart';
 import 'package:interstellar/src/screens/explore/user_item.dart';
 import 'package:interstellar/src/utils/utils.dart';
+import 'package:interstellar/src/widgets/account_scope.dart';
 import 'package:interstellar/src/widgets/loading_button.dart';
 import 'package:interstellar/src/widgets/markdown/drafts_controller.dart';
 import 'package:interstellar/src/widgets/markdown/markdown_editor.dart';
@@ -190,9 +191,9 @@ class _CommunityOwnerPanelGeneralState
                             widget.data?.isPostingRestrictedToMods)
                 ? null
                 : () async {
-                    final ac = context.read<AppController>();
+                    final api = context.scopedApi;
                     final result = widget.data == null
-                        ? await ac.api.communityModeration.create(
+                        ? await api.communityModeration.create(
                             name: _nameController.text,
                             title: _titleController.text,
                             description: _descriptionController.text,
@@ -200,7 +201,7 @@ class _CommunityOwnerPanelGeneralState
                             isPostingRestrictedToMods:
                                 _isPostingRestrictedToMods,
                           )
-                        : await ac.api.communityModeration.edit(
+                        : await api.communityModeration.edit(
                             widget.data!.id,
                             title: _titleController.text,
                             description: _descriptionController.text,

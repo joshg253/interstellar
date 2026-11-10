@@ -98,6 +98,41 @@ int commented(PostModel lhs, PostModel rhs) {
   return rhs.numComments.compareTo(lhs.numComments);
 }
 
+/// The ordering that matches a feed [sort], used when merging pages from
+/// several sources. Hot and active differ by server software.
+int Function(PostModel, PostModel) postSortFunction(
+  ServerSoftware software,
+  FeedSort sort,
+) => switch (sort) {
+  FeedSort.active => software == ServerSoftware.mbin ? mbinActive : lemmyActive,
+  FeedSort.hot => software == ServerSoftware.mbin ? mbinHot : lemmyHot,
+  FeedSort.newest => newest,
+  FeedSort.oldest => oldest,
+  FeedSort.commented => commented,
+  FeedSort.commentedThreeHour => commented,
+  FeedSort.commentedSixHour => commented,
+  FeedSort.commentedTwelveHour => commented,
+  FeedSort.commentedDay => commented,
+  FeedSort.commentedWeek => commented,
+  FeedSort.commentedMonth => commented,
+  FeedSort.commentedYear => commented,
+  FeedSort.top => top,
+  FeedSort.topDay => top,
+  FeedSort.topWeek => top,
+  FeedSort.topMonth => top,
+  FeedSort.topYear => top,
+  FeedSort.topHour => top,
+  FeedSort.topThreeHour => top,
+  FeedSort.topSixHour => top,
+  FeedSort.topTwelveHour => top,
+  FeedSort.topThreeMonths => top,
+  FeedSort.topSixMonths => top,
+  FeedSort.topNineMonths => top,
+  FeedSort.newComments => commented,
+  FeedSort.controversial => commented,
+  FeedSort.scaled => lemmyHot,
+};
+
 (List<PostModel>, List<List<PostModel>>) merge(
   ServerSoftware software,
   List<List<PostModel>> inputs,
@@ -111,36 +146,7 @@ int commented(PostModel lhs, PostModel rhs) {
     return ([], []);
   }
 
-  final sortFunc = switch (sort) {
-    FeedSort.active =>
-      software == ServerSoftware.mbin ? mbinActive : lemmyActive,
-    FeedSort.hot => software == ServerSoftware.mbin ? mbinHot : lemmyHot,
-    FeedSort.newest => newest,
-    FeedSort.oldest => oldest,
-    FeedSort.commented => commented,
-    FeedSort.commentedThreeHour => commented,
-    FeedSort.commentedSixHour => commented,
-    FeedSort.commentedTwelveHour => commented,
-    FeedSort.commentedDay => commented,
-    FeedSort.commentedWeek => commented,
-    FeedSort.commentedMonth => commented,
-    FeedSort.commentedYear => commented,
-    FeedSort.top => top,
-    FeedSort.topDay => top,
-    FeedSort.topWeek => top,
-    FeedSort.topMonth => top,
-    FeedSort.topYear => top,
-    FeedSort.topHour => top,
-    FeedSort.topThreeHour => top,
-    FeedSort.topSixHour => top,
-    FeedSort.topTwelveHour => top,
-    FeedSort.topThreeMonths => top,
-    FeedSort.topSixMonths => top,
-    FeedSort.topNineMonths => top,
-    FeedSort.newComments => commented,
-    FeedSort.controversial => commented,
-    FeedSort.scaled => lemmyHot,
-  };
+  final sortFunc = postSortFunction(software, sort);
 
   // Copy inputs into mutable lists and include previous remainders if included
   final mutableInputs = inputs

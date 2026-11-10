@@ -190,6 +190,7 @@ class FeedScreen extends StatefulWidget {
     this.details,
     this.createPostCommunity,
     this.scrollController,
+    this.accountsAction,
   });
 
   final String feedName;
@@ -197,6 +198,10 @@ class FeedScreen extends StatefulWidget {
   final Widget? details;
   final DetailedCommunityModel? createPostCommunity;
   final ScrollController? scrollController;
+
+  /// Shown as the last action in the top bar; lets the Feed tab host an
+  /// account chooser without otherwise changing this screen.
+  final Widget? accountsAction;
 
   @override
   State<FeedScreen> createState() => _FeedScreenState();
@@ -403,11 +408,10 @@ class _FeedScreenState extends State<FeedScreen> {
     // don't really need for mbin since mbin api returns
     // canAuthUserModerate with content items
     // lemmy and piefed don't return this info
-    final localUserPart = ac.localName;
     final userCanModerate =
         !(widget.createPostCommunity == null) &&
         widget.createPostCommunity!.moderators.any(
-          (mod) => mod.name == localUserPart,
+          (mod) => isAccountName(mod.name, ac.selectedAccount),
         );
 
     final actions = [
@@ -629,21 +633,28 @@ class _FeedScreenState extends State<FeedScreen> {
                       ],
                     ),
                   ),
-                  actions: actions
-                      .where(
-                        (action) => action.location == ActionLocation.appBar,
-                      )
-                      .map(
-                        (action) => Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: IconButton(
-                            tooltip: action.name,
-                            icon: Icon(action.icon),
-                            onPressed: action.callback,
-                          ),
+                  actions:
+                      actions
+                          .where(
+                            (action) =>
+                                action.location == ActionLocation.appBar,
+                          )
+                          .map<Widget>(
+                            (action) => Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: IconButton(
+                                tooltip: action.name,
+                                icon: Icon(action.icon),
+                                onPressed: action.callback,
+                              ),
+                            ),
+                          )
+                          .toList()
+                        ..addAll(
+                          widget.accountsAction == null
+                              ? const []
+                              : [widget.accountsAction!],
                         ),
-                      )
-                      .toList(),
                   bottom: tabsAction == null || tabs == null
                       ? null
                       : TabBar(
