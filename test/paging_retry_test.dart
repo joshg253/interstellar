@@ -64,4 +64,19 @@ void main() {
     ]);
     expect(controller.value.error, isNull);
   });
+
+  test('there is no next page as soon as the last page has loaded', () async {
+    final controller = AdvancedPagingController<int, int, int>(
+      logger: Logger(level: Level.off),
+      firstPageKey: 1,
+      getItemId: (item) => item,
+      fetchPage: (page) async => ([page], page < 2 ? page + 1 : null),
+    );
+
+    await controller.fetchNextPage();
+    expect(controller.value.hasNextPage, isTrue);
+
+    await controller.fetchNextPage();
+    expect(controller.value.hasNextPage, isFalse);
+  });
 }

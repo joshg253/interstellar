@@ -79,20 +79,27 @@ class APIBookmark {
     ];
   }
 
-  Future<(List<Object>, String?)> list({String? list, String? page}) async {
+  Future<(List<Object>, String?)> list({
+    String? list,
+    String? page,
+    String sort = 'newest',
+  }) async {
     switch (client.software) {
       case ServerSoftware.mastodon:
         final (items, next) = await MastodonAPI(client).bookmarks(page: page);
         return (items, next);
       case ServerSoftware.mbin:
         const path = '/bookmark-lists/show';
-        final query = {'list': list, 'sort': 'newest', 'p': page};
+        final query = {'list': list, 'sort': sort, 'p': page};
 
         final response = await client.get(path, queryParams: query);
 
         final json = response.bodyJson;
+        // PHP writes an array with gaps in its keys as an object.
+        final rawItems = json['items']!;
         final itemList = await _withOwnVotes(
-          (json['items']! as List<dynamic>).cast<JsonMap>(),
+          (rawItems is Map ? rawItems.values.toList() : rawItems as List)
+              .cast<JsonMap>(),
         );
         final items = itemList
             .map((item) {
