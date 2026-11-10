@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/testing.dart';
+import 'package:interstellar/src/api/api.dart';
+import 'package:interstellar/src/api/client.dart';
 import 'package:interstellar/src/controller/controller.dart';
 import 'package:interstellar/src/controller/server.dart';
 import 'package:interstellar/src/models/community.dart';
@@ -9,10 +12,17 @@ import 'package:material_symbols_icons/symbols.dart';
 import 'package:provider/provider.dart';
 
 class _FakeController extends Fake implements AppController {
-  _FakeController(this.serverSoftware);
+  _FakeController(ServerSoftware software)
+    : api = API(
+        ServerClient(
+          httpClient: MockClient((_) async => throw UnimplementedError()),
+          software: software,
+          domain: 'example.com',
+        ),
+      );
 
   @override
-  final ServerSoftware serverSoftware;
+  final API api;
 
   @override
   void addListener(VoidCallback listener) {}

@@ -263,11 +263,26 @@ class _CommunityOwnerPanelModeratorsState
               onPressed: _addModController.text.isEmpty
                   ? null
                   : () async {
-                      final user = await context
-                          .read<AppController>()
-                          .api
-                          .users
-                          .getByName(_addModController.text);
+                      // Errors show after any dialog closes, or they would be
+                      // hidden behind its overlay.
+                      final messenger = ScaffoldMessenger.of(context);
+                      final api = context.scopedApi;
+                      final DetailedUserModel user;
+                      try {
+                        user = await api.users.getByName(
+                          _addModController.text,
+                        );
+                      } catch (e) {
+                        messenger.showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Could not find ${_addModController.text}: $e',
+                            ),
+                            showCloseIcon: true,
+                          ),
+                        );
+                        return;
+                      }
 
                       if (!context.mounted) return;
                       final result = await showDialog<List<UserModel>>(
@@ -287,17 +302,27 @@ class _CommunityOwnerPanelModeratorsState
                             ),
                             LoadingFilledButton(
                               onPressed: () async {
-                                context.router.pop(
-                                  await context
-                                      .read<AppController>()
-                                      .api
+                                try {
+                                  final moderators = await api
                                       .communityModeration
                                       .updateModerator(
                                         widget.data.id,
                                         user.id,
                                         true,
+                                      );
+                                  if (!context.mounted) return;
+                                  context.router.pop(moderators);
+                                } catch (e) {
+                                  if (context.mounted) context.router.pop();
+                                  messenger.showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        'Could not add moderator: $e',
                                       ),
-                                );
+                                      showCloseIcon: true,
+                                    ),
+                                  );
+                                }
                               },
                               label: const Text('Add'),
                             ),
@@ -325,6 +350,8 @@ class _CommunityOwnerPanelModeratorsState
               IconButton(
                 icon: const Icon(Symbols.delete_outline_rounded),
                 onPressed: () async {
+                  final messenger = ScaffoldMessenger.of(context);
+                  final api = context.scopedApi;
                   final result = await showDialog<List<UserModel>>(
                     context: context,
                     builder: (context) => AlertDialog(
@@ -345,17 +372,26 @@ class _CommunityOwnerPanelModeratorsState
                         ),
                         LoadingFilledButton(
                           onPressed: () async {
-                            context.router.pop(
-                              await context
-                                  .read<AppController>()
-                                  .api
-                                  .communityModeration
+                            try {
+                              final moderators = await api.communityModeration
                                   .updateModerator(
                                     widget.data.id,
                                     mod.id,
                                     false,
+                                  );
+                              if (!context.mounted) return;
+                              context.router.pop(moderators);
+                            } catch (e) {
+                              if (context.mounted) context.router.pop();
+                              messenger.showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'Could not remove moderator: $e',
                                   ),
-                            );
+                                  showCloseIcon: true,
+                                ),
+                              );
+                            }
                           },
                           label: const Text('Remove'),
                         ),
@@ -395,7 +431,7 @@ class _CommunityOwnerPanelDeletionState
   @override
   Widget build(BuildContext context) {
     // Neither action is implemented for Lemmy yet.
-    if (context.read<AppController>().serverSoftware == ServerSoftware.lemmy) {
+    if (context.scopedApi.client.software == ServerSoftware.lemmy) {
       return const Center(
         child: Text('Removing the icon or deleting is not available on Lemmy.'),
       );
@@ -410,11 +446,9 @@ class _CommunityOwnerPanelDeletionState
             onPressed: widget.data.icon == null
                 ? null
                 : () async {
-                    await context
-                        .read<AppController>()
-                        .api
-                        .communityModeration
-                        .removeIcon(widget.data.id);
+                    await context.scopedApi.communityModeration.removeIcon(
+                      widget.data.id,
+                    );
 
                     widget.onUpdate(widget.data.copyWith(icon: null));
                   },
@@ -485,11 +519,9 @@ class _CommunityOwnerPanelDeletionDialogState
           onPressed: _confirmController.text != communityName
               ? null
               : () async {
-                  await context
-                      .read<AppController>()
-                      .api
-                      .communityModeration
-                      .delete(widget.data.id);
+                  await context.scopedApi.communityModeration.delete(
+                    widget.data.id,
+                  );
 
                   if (!context.mounted) return;
                   context.router.pop(true);
