@@ -63,6 +63,9 @@ class MbinAPIMicroblogs {
   }
 
   Future<PostModel> putVote(int postID, int choice) async {
+    if (client.software == ServerSoftware.mastodon) {
+      throw UnsupportedError('Mastodon: read-only');
+    }
     final path = '/post/$postID/vote/$choice';
 
     final response = await client.put(path);
@@ -71,6 +74,9 @@ class MbinAPIMicroblogs {
   }
 
   Future<PostModel> putFavorite(int postID) async {
+    if (client.software == ServerSoftware.mastodon) {
+      throw UnsupportedError('Mastodon: read-only');
+    }
     final path = '/post/$postID/favourite';
 
     final response = await client.put(path);
@@ -84,6 +90,9 @@ class MbinAPIMicroblogs {
     String lang,
     bool isAdult,
   ) async {
+    if (client.software == ServerSoftware.mastodon) {
+      throw UnsupportedError('Mastodon: read-only');
+    }
     final path = '/post/$postID';
 
     final response = await client.put(
@@ -95,6 +104,9 @@ class MbinAPIMicroblogs {
   }
 
   Future<void> delete(int postID) async {
+    if (client.software == ServerSoftware.mastodon) {
+      throw UnsupportedError('Mastodon: read-only');
+    }
     final path = '/post/$postID';
 
     final response = await client.delete(path);
@@ -106,6 +118,9 @@ class MbinAPIMicroblogs {
     required String lang,
     required bool isAdult,
   }) async {
+    if (client.software == ServerSoftware.mastodon) {
+      throw UnsupportedError('Mastodon: read-only');
+    }
     final path = '/magazine/$communityId/posts';
 
     final response = await client.post(
@@ -124,6 +139,9 @@ class MbinAPIMicroblogs {
     required String lang,
     required bool isAdult,
   }) async {
+    if (client.software == ServerSoftware.mastodon) {
+      throw UnsupportedError('Mastodon: read-only');
+    }
     final path = '/magazine/$communityId/posts/image';
 
     final response = await client.postMultipart(
@@ -141,6 +159,9 @@ class MbinAPIMicroblogs {
   }
 
   Future<void> report(int postId, String reason) async {
+    if (client.software == ServerSoftware.mastodon) {
+      throw UnsupportedError('Mastodon: read-only');
+    }
     final path = '/post/$postId/report';
 
     final response = await client.post(path, body: {'reason': reason});

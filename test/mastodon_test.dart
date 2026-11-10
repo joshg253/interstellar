@@ -157,13 +157,17 @@ void main() {
       ]);
       final first = tree.first;
       expect(first.postId, mastodonId('social.example.com', '100'));
-      expect(first.parentId, mastodonId('social.example.com', '100'));
+      // A direct reply has no parent or root comment, as on Lemmy and PieFed;
+      // the post is not a comment the parent/root buttons could open.
+      expect(first.parentId, isNull);
+      expect(first.rootId, isNull);
       expect(first.childCount, 1);
       expect(
         first.children!.single.id,
         mastodonId('social.example.com', '102'),
       );
       expect(first.children!.single.parentId, first.id);
+      expect(first.children!.single.rootId, first.id);
       expect(tree.last.children, isEmpty);
     });
   });

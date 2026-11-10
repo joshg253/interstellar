@@ -69,9 +69,11 @@ String _decodeEntities(String text) => text.replaceAllMapped(_htmlEntity, (m) {
   };
 });
 
-/// Status text is plain text in HTML, so any markdown in it is literal.
+/// Status text is plain text in HTML, so any markdown in it is literal. `@`
+/// is escaped too, so plain text cannot become one of the app's mention links;
+/// real mentions arrive as HTML links and stay links.
 String _escapeInline(String text) =>
-    text.replaceAllMapped(RegExp(r'[\\`*_\[\]<>~|]'), (m) => '\\${m[0]}');
+    text.replaceAllMapped(RegExp(r'[\\`*_\[\]<>~|@]'), (m) => '\\${m[0]}');
 
 /// Markdown that only means something at the start of a line (headings,
 /// lists, the app's `:::` blocks).
@@ -235,11 +237,14 @@ CommunityModel _community(String domain) =>
     CommunityModel(id: 0, name: domain, icon: null, apId: null);
 
 /// A content warning hides the text behind the app's spoiler block. The
-/// warning is plain text and the block shows its first line as the title.
+/// warning is plain text, but the block renders its first line as markdown, so
+/// it is escaped.
 String _body(JsonMap s) {
-  final warning = ((s['spoiler_text'] as String?) ?? '')
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .trim();
+  final warning = _escapeInline(
+    ((s['spoiler_text'] as String?) ?? '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim(),
+  );
   final text = mastodonHtmlToMarkdown((s['content'] as String?) ?? '');
   return warning.isEmpty ? text : '::: spoiler $warning\n$text\n:::';
 }
@@ -320,9 +325,13 @@ List<CommentModel> mastodonCommentTree(
         .add(d);
   }
 
-  CommentModel build(JsonMap d, String parentRaw) {
+  // [parentRaw] and [topRaw] are null for a direct reply to the post, as
+  // the parent and root of a top-level comment are on Lemmy and PieFed.
+  CommentModel build(JsonMap d, String? parentRaw, String? topRaw) {
     final raw = d['id']! as String;
-    final children = [for (final c in byParent[raw] ?? []) build(c, raw)];
+    final children = [
+      for (final c in byParent[raw] ?? []) build(c, raw, topRaw ?? raw),
+    ];
     final created = DateTime.parse(d['created_at']! as String);
     return CommentModel(
       id: mastodonId(domain, raw),
@@ -330,8 +339,8 @@ List<CommentModel> mastodonCommentTree(
       community: _community(domain),
       postType: PostType.microblog,
       postId: mastodonId(domain, rootRaw),
-      rootId: mastodonId(domain, rootRaw),
-      parentId: mastodonId(domain, parentRaw),
+      rootId: topRaw == null ? null : mastodonId(domain, topRaw),
+      parentId: parentRaw == null ? null : mastodonId(domain, parentRaw),
       image: _image(((d['media_attachments'] as List?) ?? []).cast<JsonMap>()),
       body: _body(d),
       lang: d['language'] as String?,
@@ -354,7 +363,7 @@ List<CommentModel> mastodonCommentTree(
     );
   }
 
-  return [for (final d in byParent[rootRaw] ?? []) build(d, rootRaw)];
+  return [for (final d in byParent[rootRaw] ?? []) build(d, null, null)];
 }
 
 class MastodonAPI {
