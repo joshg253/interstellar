@@ -427,6 +427,9 @@ class _CreateScreenState extends State<CreateScreen> {
     return DefaultTabController(
       initialIndex: _defaultTab,
       length: switch (ac.serverSoftware) {
+        ServerSoftware.mastodon => throw UnsupportedError(
+          'Mastodon: not supported here',
+        ),
         ServerSoftware.mbin => 5,
         // Microblog tab only for Mbin
         ServerSoftware.lemmy => 4,

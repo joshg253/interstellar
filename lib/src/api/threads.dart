@@ -2,6 +2,7 @@ import 'package:collection/collection.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:interstellar/src/api/client.dart';
 import 'package:interstellar/src/api/feed_source.dart';
+import 'package:interstellar/src/api/mastodon.dart';
 import 'package:interstellar/src/controller/server.dart';
 import 'package:interstellar/src/models/event.dart';
 import 'package:interstellar/src/models/post.dart';
@@ -62,6 +63,8 @@ class APIThreads {
     bool includeBoosts = false,
   }) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        return MastodonAPI(client).timeline(source, page: page);
       case ServerSoftware.mbin:
         final path = switch (source) {
           FeedSource.all => '/${combined ? 'combined' : 'entries'}',
@@ -194,6 +197,8 @@ class APIThreads {
 
   Future<PostModel> get(int postId) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/entry/$postId';
 
@@ -232,6 +237,8 @@ class APIThreads {
     String? emoji,
   }) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = choice == 1
             ? '/entry/$postId/favourite'
@@ -267,6 +274,8 @@ class APIThreads {
 
   Future<PostModel> boost(int postId) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/entry/$postId/vote/1';
 
@@ -284,6 +293,8 @@ class APIThreads {
 
   Future<PostModel> votePoll(int postId, List<int> choiceIds) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         throw Exception('Tried to vote on a poll on mbin');
       case ServerSoftware.lemmy:
@@ -311,6 +322,8 @@ class APIThreads {
     List<String> tags = const [],
   }) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/entry/$postId';
 
@@ -368,6 +381,8 @@ class APIThreads {
 
   Future<void> delete(int postID) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final response = await client.delete('/entry/$postID');
 
@@ -393,6 +408,8 @@ class APIThreads {
 
   Future<PostModel> assignFlairs(int postId, List<int> flairIds) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         throw UnsupportedError(
           'Mbin doesnt support assigning flairs to a post',
@@ -427,6 +444,8 @@ class APIThreads {
     List<String> tags = const [],
   }) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         assert(
           body?.isNotEmpty != null || url?.isNotEmpty != null || image != null,
@@ -536,6 +555,8 @@ class APIThreads {
     required String mode,
   }) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         throw UnimplementedError('Polls are unsupported on mbin');
 
@@ -593,6 +614,8 @@ class APIThreads {
     int fee = 0,
   }) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         throw UnimplementedError('Events are unsupported on mbin');
 
@@ -631,6 +654,8 @@ class APIThreads {
 
   Future<void> report(int postId, String reason) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/entry/$postId/report';
 
@@ -656,6 +681,8 @@ class APIThreads {
 
   Future<void> markAsRead(List<int> postIds, bool read) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         throw UnsupportedError('Mbin doesnt support marking posts as read');
       case ServerSoftware.lemmy:

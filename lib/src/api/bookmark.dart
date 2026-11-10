@@ -40,6 +40,8 @@ class APIBookmark {
 
   Future<(List<Object>, String?)> list({String? list, String? page}) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         const path = '/bookmark-lists/show';
         final query = {'list': list, 'sort': 'newest', 'p': page};
@@ -146,6 +148,8 @@ class APIBookmark {
 
   Future<BookmarkListModel> createBookmarkList(String name) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/bookmark-lists/$name';
 
@@ -162,6 +166,8 @@ class APIBookmark {
 
   Future<void> deleteBookmarkList(String name) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/bookmark-lists/$name';
 
@@ -176,6 +182,8 @@ class APIBookmark {
 
   Future<BookmarkListModel> makeBookmarkListDefault(String name) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/bookmark-lists/$name/makeDefault';
 
@@ -192,6 +200,8 @@ class APIBookmark {
 
   Future<List<BookmarkListModel>> getBookmarkLists() async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         const path = '/bookmark-lists';
 
@@ -212,6 +222,8 @@ class APIBookmark {
     required int subjectId,
   }) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/bos/$subjectId/${subjectType.toJson()}';
 
@@ -269,6 +281,8 @@ class APIBookmark {
     required String listName,
   }) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/bol/$subjectId/${subjectType.toJson()}/$listName';
 
@@ -289,6 +303,8 @@ class APIBookmark {
     required int subjectId,
   }) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/rbo/$subjectId/${subjectType.toJson()}';
 
@@ -346,6 +362,8 @@ class APIBookmark {
     required String listName,
   }) async {
     switch (client.software) {
+      case ServerSoftware.mastodon:
+        throw UnsupportedError('Mastodon: not supported here');
       case ServerSoftware.mbin:
         final path = '/rbol/$subjectId/${subjectType.toJson()}/$listName';
 

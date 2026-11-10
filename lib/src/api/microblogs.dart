@@ -3,6 +3,8 @@ import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:interstellar/src/api/client.dart';
 import 'package:interstellar/src/api/feed_source.dart';
+import 'package:interstellar/src/api/mastodon.dart';
+import 'package:interstellar/src/controller/server.dart';
 import 'package:interstellar/src/models/post.dart';
 import 'package:interstellar/src/utils/utils.dart';
 
@@ -17,6 +19,9 @@ class MbinAPIMicroblogs {
     String? page,
     FeedSort? sort,
   }) async {
+    if (client.software == ServerSoftware.mastodon) {
+      return MastodonAPI(client).timeline(source, page: page);
+    }
     final path = switch (source) {
       FeedSource.all => '/posts',
       FeedSource.local => '/posts',
@@ -47,6 +52,9 @@ class MbinAPIMicroblogs {
   }
 
   Future<PostModel> get(int postId) async {
+    if (client.software == ServerSoftware.mastodon) {
+      return MastodonAPI(client).status(postId);
+    }
     final path = '/post/$postId';
 
     final response = await client.get(path);
@@ -55,6 +63,9 @@ class MbinAPIMicroblogs {
   }
 
   Future<PostModel> putVote(int postID, int choice) async {
+    if (client.software == ServerSoftware.mastodon) {
+      throw UnsupportedError('Mastodon: read-only');
+    }
     final path = '/post/$postID/vote/$choice';
 
     final response = await client.put(path);
@@ -63,6 +74,9 @@ class MbinAPIMicroblogs {
   }
 
   Future<PostModel> putFavorite(int postID) async {
+    if (client.software == ServerSoftware.mastodon) {
+      throw UnsupportedError('Mastodon: read-only');
+    }
     final path = '/post/$postID/favourite';
 
     final response = await client.put(path);
@@ -76,6 +90,9 @@ class MbinAPIMicroblogs {
     String lang,
     bool isAdult,
   ) async {
+    if (client.software == ServerSoftware.mastodon) {
+      throw UnsupportedError('Mastodon: read-only');
+    }
     final path = '/post/$postID';
 
     final response = await client.put(
@@ -87,6 +104,9 @@ class MbinAPIMicroblogs {
   }
 
   Future<void> delete(int postID) async {
+    if (client.software == ServerSoftware.mastodon) {
+      throw UnsupportedError('Mastodon: read-only');
+    }
     final path = '/post/$postID';
 
     final response = await client.delete(path);
@@ -98,6 +118,9 @@ class MbinAPIMicroblogs {
     required String lang,
     required bool isAdult,
   }) async {
+    if (client.software == ServerSoftware.mastodon) {
+      throw UnsupportedError('Mastodon: read-only');
+    }
     final path = '/magazine/$communityId/posts';
 
     final response = await client.post(
@@ -116,6 +139,9 @@ class MbinAPIMicroblogs {
     required String lang,
     required bool isAdult,
   }) async {
+    if (client.software == ServerSoftware.mastodon) {
+      throw UnsupportedError('Mastodon: read-only');
+    }
     final path = '/magazine/$communityId/posts/image';
 
     final response = await client.postMultipart(
@@ -133,6 +159,9 @@ class MbinAPIMicroblogs {
   }
 
   Future<void> report(int postId, String reason) async {
+    if (client.software == ServerSoftware.mastodon) {
+      throw UnsupportedError('Mastodon: read-only');
+    }
     final path = '/post/$postId/report';
 
     final response = await client.post(path, body: {'reason': reason});
