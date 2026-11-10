@@ -292,13 +292,56 @@ PostModel mastodonPost(JsonMap json, String domain) {
     visibility: PostVisibility.visible,
     canAuthUserModerate: null,
     notificationControlStatus: null,
-    bookmarks: null,
+    bookmarks: [if ((s['bookmarked'] as bool?) ?? false) ''],
     read: false,
     crossPosts: [],
     flairs: [],
     poll: null,
     event: null,
     apId: (s['uri'] ?? s['url']) as String?,
+    emojiReactions: null,
+  );
+}
+
+/// One status as a comment on the post [rootRaw]. [parentRaw] and [topRaw] are
+/// the comment it replies to and the top-level comment above it: null for a
+/// direct reply to the post (as on Lemmy and PieFed), or when not known.
+/// [children] are its replies, when known.
+CommentModel mastodonComment(
+  JsonMap d,
+  String domain, {
+  required String rootRaw,
+  String? parentRaw,
+  String? topRaw,
+  List<CommentModel> children = const [],
+}) {
+  final created = DateTime.parse(d['created_at']! as String);
+  return CommentModel(
+    id: mastodonId(domain, d['id']! as String),
+    user: _user(d['account']! as JsonMap, domain),
+    community: _community(domain),
+    postType: PostType.microblog,
+    postId: mastodonId(domain, rootRaw),
+    rootId: topRaw == null ? null : mastodonId(domain, topRaw),
+    parentId: parentRaw == null ? null : mastodonId(domain, parentRaw),
+    image: _image(((d['media_attachments'] as List?) ?? []).cast<JsonMap>()),
+    body: _body(d),
+    lang: d['language'] as String?,
+    isLocked: false,
+    upvotes: d['favourites_count'] as int?,
+    downvotes: null,
+    boosts: d['reblogs_count'] as int?,
+    myVote: (d['favourited'] as bool?) ?? false ? 1 : 0,
+    myBoost: d['reblogged'] as bool?,
+    createdAt: created,
+    editedAt: optionalDateTime(d['edited_at'] as String?),
+    children: children,
+    childCount: children.fold(0, (sum, c) => sum + 1 + c.childCount),
+    visibility: PostVisibility.visible,
+    canAuthUserModerate: null,
+    notificationControlStatus: null,
+    bookmarks: [if ((d['bookmarked'] as bool?) ?? false) ''],
+    apId: (d['uri'] ?? d['url']) as String?,
     emojiReactions: null,
   );
 }
@@ -329,37 +372,15 @@ List<CommentModel> mastodonCommentTree(
   // the parent and root of a top-level comment are on Lemmy and PieFed.
   CommentModel build(JsonMap d, String? parentRaw, String? topRaw) {
     final raw = d['id']! as String;
-    final children = [
-      for (final c in byParent[raw] ?? []) build(c, raw, topRaw ?? raw),
-    ];
-    final created = DateTime.parse(d['created_at']! as String);
-    return CommentModel(
-      id: mastodonId(domain, raw),
-      user: _user(d['account']! as JsonMap, domain),
-      community: _community(domain),
-      postType: PostType.microblog,
-      postId: mastodonId(domain, rootRaw),
-      rootId: topRaw == null ? null : mastodonId(domain, topRaw),
-      parentId: parentRaw == null ? null : mastodonId(domain, parentRaw),
-      image: _image(((d['media_attachments'] as List?) ?? []).cast<JsonMap>()),
-      body: _body(d),
-      lang: d['language'] as String?,
-      isLocked: false,
-      upvotes: d['favourites_count'] as int?,
-      downvotes: null,
-      boosts: d['reblogs_count'] as int?,
-      myVote: (d['favourited'] as bool?) ?? false ? 1 : 0,
-      myBoost: d['reblogged'] as bool?,
-      createdAt: created,
-      editedAt: optionalDateTime(d['edited_at'] as String?),
-      children: children,
-      childCount: children.fold(0, (sum, c) => sum + 1 + c.childCount),
-      visibility: PostVisibility.visible,
-      canAuthUserModerate: null,
-      notificationControlStatus: null,
-      bookmarks: null,
-      apId: (d['uri'] ?? d['url']) as String?,
-      emojiReactions: null,
+    return mastodonComment(
+      d,
+      domain,
+      rootRaw: rootRaw,
+      parentRaw: parentRaw,
+      topRaw: topRaw,
+      children: [
+        for (final c in byParent[raw] ?? []) build(c, raw, topRaw ?? raw),
+      ],
     );
   }
 
@@ -449,6 +470,90 @@ class MastodonAPI {
     return CommentListModel(
       items: mastodonCommentTree(response.bodyJson, {'id': raw}, client.domain),
       nextPage: null,
+    );
+  }
+
+  Future<JsonMap> setBookmark(int id, bool state) async => (await client.post(
+    '/statuses/${mastodonRawId(id)}/${state ? 'bookmark' : 'unbookmark'}',
+  )).bodyJson;
+
+  /// Bookmarks page by the `Link` header: the ids in it belong to the
+  /// bookmarks, not to the statuses.
+  Future<(List<PostModel>, String?)> bookmarks({String? page}) async {
+    final response = await client.get(
+      '/bookmarks',
+      queryParams: {'limit': '20', 'max_id': page},
+    );
+    final next = RegExp(
+      r'<([^>]*)>\s*;\s*rel="next"',
+    ).firstMatch(response.headers['link'] ?? '')?[1];
+    return (
+      [for (final s in _list(response.body)) mastodonPost(s, client.domain)],
+      next == null ? null : Uri.parse(next).queryParameters['max_id'],
+    );
+  }
+
+  Future<JsonMap> _rawStatus(int id) async =>
+      (await client.get('/statuses/${mastodonRawId(id)}')).bodyJson;
+
+  /// Favorites or unfavorites, like Mbin's toggle: the current state decides.
+  Future<JsonMap> toggleFavourite(int id) async {
+    final raw = mastodonRawId(id);
+    final on = (await _rawStatus(id))['favourited'] == true;
+    return (await client.post(
+      '/statuses/$raw/${on ? 'unfavourite' : 'favourite'}',
+    )).bodyJson;
+  }
+
+  /// Boosts or unboosts. The response wraps the boosted status.
+  Future<JsonMap> toggleReblog(int id) async {
+    final raw = mastodonRawId(id);
+    final on = (await _rawStatus(id))['reblogged'] == true;
+    final json = (await client.post(
+      '/statuses/$raw/${on ? 'unreblog' : 'reblog'}',
+    )).bodyJson;
+    return (json['reblog'] as JsonMap?) ?? json;
+  }
+
+  Future<JsonMap> createStatus(
+    String body, {
+    String? inReplyTo,
+    String? lang,
+    bool sensitive = false,
+  }) async => (await client.post(
+    '/statuses',
+    body: {
+      'status': body,
+      'in_reply_to_id': ?inReplyTo,
+      'language': ?lang,
+      if (sensitive) 'sensitive': true,
+    },
+  )).bodyJson;
+
+  Future<JsonMap> editStatus(
+    int id,
+    String body, {
+    String? lang,
+    bool? sensitive,
+  }) async => (await client.put(
+    '/statuses/${mastodonRawId(id)}',
+    body: {'status': body, 'language': ?lang, 'sensitive': ?sensitive},
+  )).bodyJson;
+
+  Future<void> deleteStatus(int id) async {
+    await client.delete('/statuses/${mastodonRawId(id)}');
+  }
+
+  Future<void> reportStatus(int id, String reason) async {
+    final raw = mastodonRawId(id);
+    final accountId = ((await _rawStatus(id))['account']! as JsonMap)['id'];
+    await client.post(
+      '/reports',
+      body: {
+        'account_id': accountId,
+        'status_ids': [raw],
+        'comment': reason,
+      },
     );
   }
 }

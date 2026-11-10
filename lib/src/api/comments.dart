@@ -66,6 +66,15 @@ const Map<PostType, String> _postTypeMbinComment = {
   PostType.microblog: 'post-comments',
 };
 
+/// A comment from a lone status, where the thread root is not known: its
+/// parent stands in as the post, and it has no parent or root comment, which
+/// the UI does not use when it replaces a comment.
+CommentModel _mastodonComment(ServerClient client, JsonMap status) {
+  final parent =
+      (status['in_reply_to_id'] as String?) ?? status['id']! as String;
+  return mastodonComment(status, client.domain, rootRaw: parent);
+}
+
 class APIComments {
   APIComments(this.client);
 
@@ -227,7 +236,13 @@ class APIComments {
   }) async {
     switch (client.software) {
       case ServerSoftware.mastodon:
-        throw UnsupportedError('Mastodon: not supported here');
+        if (choice != 1) {
+          throw UnsupportedError('Mastodon: no downvotes');
+        }
+        return _mastodonComment(
+          client,
+          await MastodonAPI(client).toggleFavourite(commentId),
+        );
       case ServerSoftware.mbin:
         final path = choice == 1
             ? '/${_postTypeMbinComment[postType]}/$commentId/favourite'
@@ -268,7 +283,10 @@ class APIComments {
   Future<CommentModel> boost(PostType postType, int commentId) async {
     switch (client.software) {
       case ServerSoftware.mastodon:
-        throw UnsupportedError('Mastodon: not supported here');
+        return _mastodonComment(
+          client,
+          await MastodonAPI(client).toggleReblog(commentId),
+        );
       case ServerSoftware.mbin:
         final path = '/${_postTypeMbinComment[postType]}/$commentId/vote/1';
 
@@ -296,7 +314,22 @@ class APIComments {
   }) async {
     switch (client.software) {
       case ServerSoftware.mastodon:
-        throw UnsupportedError('Mastodon: not supported here');
+        if (image != null)
+          throw UnsupportedError('Mastodon: no images in replies');
+        final json = await MastodonAPI(client).createStatus(
+          body,
+          inReplyTo: mastodonRawId(parentCommentId ?? postId),
+          lang: lang,
+          sensitive: isAdult,
+        );
+        return mastodonComment(
+          json,
+          client.domain,
+          rootRaw: mastodonRawId(postId),
+          parentRaw: parentCommentId == null
+              ? null
+              : mastodonRawId(parentCommentId),
+        );
       case ServerSoftware.mbin:
         if (image == null) {
           final path =
@@ -371,7 +404,7 @@ class APIComments {
   ) async {
     switch (client.software) {
       case ServerSoftware.mastodon:
-        throw UnsupportedError('Mastodon: not supported here');
+        throw UnsupportedError('Mastodon: editing is not supported yet');
       case ServerSoftware.mbin:
         final path = '/${_postTypeMbinComment[postType]}/$commentId';
 
@@ -410,7 +443,7 @@ class APIComments {
   Future<void> delete(PostType postType, int commentId) async {
     switch (client.software) {
       case ServerSoftware.mastodon:
-        throw UnsupportedError('Mastodon: not supported here');
+        await MastodonAPI(client).deleteStatus(commentId);
       case ServerSoftware.mbin:
         final path = '/${_postTypeMbinComment[postType]}/$commentId';
 
@@ -437,7 +470,7 @@ class APIComments {
   Future<void> report(PostType postType, int commentId, String reason) async {
     switch (client.software) {
       case ServerSoftware.mastodon:
-        throw UnsupportedError('Mastodon: not supported here');
+        await MastodonAPI(client).reportStatus(commentId, reason);
       case ServerSoftware.mbin:
         final path = '/${_postTypeMbinComment[postType]}/$commentId/report';
 

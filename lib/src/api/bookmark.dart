@@ -1,4 +1,5 @@
 import 'package:interstellar/src/api/client.dart';
+import 'package:interstellar/src/api/mastodon.dart';
 import 'package:interstellar/src/controller/server.dart';
 import 'package:interstellar/src/models/bookmark_list.dart';
 import 'package:interstellar/src/models/comment.dart';
@@ -41,7 +42,8 @@ class APIBookmark {
   Future<(List<Object>, String?)> list({String? list, String? page}) async {
     switch (client.software) {
       case ServerSoftware.mastodon:
-        throw UnsupportedError('Mastodon: not supported here');
+        final (items, next) = await MastodonAPI(client).bookmarks(page: page);
+        return (items, next);
       case ServerSoftware.mbin:
         const path = '/bookmark-lists/show';
         final query = {'list': list, 'sort': 'newest', 'p': page};
@@ -223,7 +225,8 @@ class APIBookmark {
   }) async {
     switch (client.software) {
       case ServerSoftware.mastodon:
-        throw UnsupportedError('Mastodon: not supported here');
+        await MastodonAPI(client).setBookmark(subjectId, true);
+        return [''];
       case ServerSoftware.mbin:
         final path = '/bos/$subjectId/${subjectType.toJson()}';
 
@@ -304,7 +307,8 @@ class APIBookmark {
   }) async {
     switch (client.software) {
       case ServerSoftware.mastodon:
-        throw UnsupportedError('Mastodon: not supported here');
+        await MastodonAPI(client).setBookmark(subjectId, false);
+        return [];
       case ServerSoftware.mbin:
         final path = '/rbo/$subjectId/${subjectType.toJson()}';
 
