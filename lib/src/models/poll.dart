@@ -1,4 +1,5 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
+import 'package:interstellar/src/utils/models.dart';
 import 'package:interstellar/src/utils/utils.dart';
 
 part 'poll.freezed.dart';
@@ -24,6 +25,35 @@ abstract class PollModel with _$PollModel {
     required List<PollChoiceModel> choices,
   }) = _PollModel;
 
+  const PollModel._();
+
+  /// A Mastodon poll. Its options have no ids, so a choice id is its index.
+  /// A poll that never expires gets a far-off end.
+  factory PollModel.fromMastodon(int postId, JsonMap json) {
+    final own = (json['own_votes'] as List<dynamic>? ?? []).cast<int>();
+    final options = (json['options']! as List<dynamic>).cast<JsonMap>();
+
+    return PollModel(
+      postId: postId,
+      endPoll:
+          optionalDateTime(json['expires_at'] as String?)?.toLocal() ??
+          DateTime.utc(9999),
+      multiple: (json['multiple'] as bool?) ?? false,
+      localOnly: false,
+      choices: [
+        for (final (i, option) in options.indexed)
+          PollChoiceModel(
+            id: i,
+            text: option['title']! as String,
+            sortOrder: i,
+            // hidden until the poll closes
+            numVotes: (option['votes_count'] as int?) ?? 0,
+            chosen: own.contains(i),
+          ),
+      ],
+    );
+  }
+
   factory PollModel.fromPiefed(int postId, JsonMap json) {
     final choices = json['choices']! as List<dynamic>;
     final votes = json['my_votes'] as List<dynamic>? ?? [];
@@ -46,4 +76,7 @@ abstract class PollModel with _$PollModel {
           .toList(),
     );
   }
+
+  /// A poll with no end date (some servers allow it) carries a far-off end.
+  bool get neverEnds => endPoll.year >= 9999;
 }

@@ -34,9 +34,15 @@ class _PollState extends State<Poll> {
 
     final expired = widget.poll.endPoll.isBefore(DateTime.now());
     _submitted = (whenLoggedIn(context, answer != null) ?? true) || expired;
+    // nothing left to vote on, or already voted: show how it stands
+    _showResults = expired || answer != null;
   }
 
   String getTimeTillExpire() {
+    if (widget.poll.neverEnds) return '';
+    if (widget.poll.endPoll.isBefore(DateTime.now())) {
+      return l(context).pollEnded;
+    }
     final diff = widget.poll.endPoll.difference(DateTime.now());
 
     final days = diff.inDays;
@@ -182,15 +188,25 @@ class _PollState extends State<Poll> {
                       return;
                     }
 
-                    final post = await context.scopedApi.threads.votePoll(
-                      widget.poll.postId,
-                      votes,
-                    );
+                    final messenger = ScaffoldMessenger.of(context);
+                    final api = context.scopedApi;
+                    try {
+                      final post = await api.threads.votePoll(
+                        widget.poll.postId,
+                        votes,
+                      );
 
-                    setState(() {
-                      _choices = post.poll?.choices.toList() ?? _choices;
-                      _submitted = true;
-                    });
+                      if (!mounted) return;
+                      setState(() {
+                        _choices = post.poll?.choices.toList() ?? _choices;
+                        _submitted = true;
+                        // swap the controls for how it stands
+                        _showResults = true;
+                      });
+                    } catch (e) {
+                      // e.g. the poll closed, or this account already voted
+                      messenger.showSnackBar(SnackBar(content: Text('$e')));
+                    }
                   },
                   child: Text(l(context).submit),
                 ),
