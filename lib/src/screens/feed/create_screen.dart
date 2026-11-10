@@ -2,6 +2,7 @@ import 'package:any_link_preview/any_link_preview.dart';
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:interstellar/src/api/api.dart';
 import 'package:interstellar/src/controller/controller.dart';
 import 'package:interstellar/src/controller/database/database.dart';
 import 'package:interstellar/src/controller/router.gr.dart';
@@ -13,6 +14,8 @@ import 'package:interstellar/src/screens/explore/community_owner_panel.dart';
 import 'package:interstellar/src/utils/ap_urls.dart';
 import 'package:interstellar/src/utils/language.dart';
 import 'package:interstellar/src/utils/utils.dart';
+import 'package:interstellar/src/widgets/account_avatar.dart';
+import 'package:interstellar/src/widgets/account_scope.dart';
 import 'package:interstellar/src/widgets/community_picker.dart';
 import 'package:interstellar/src/widgets/image_selector.dart';
 import 'package:interstellar/src/widgets/list_tile_switch.dart';
@@ -34,6 +37,7 @@ class CreateScreen extends StatefulWidget {
     this.initCommunity,
     this.initTitle,
     this.initBody,
+    this.account,
     super.key,
   });
 
@@ -41,6 +45,9 @@ class CreateScreen extends StatefulWidget {
   final DetailedCommunityModel? initCommunity;
   final String? initTitle;
   final String? initBody;
+
+  /// Post as this account instead of the selected one (used by merged views).
+  final String? account;
 
   @override
   State<CreateScreen> createState() => _CreateScreenState();
@@ -68,10 +75,17 @@ class _CreateScreenState extends State<CreateScreen> {
   DateTime _startDate = DateTime.now();
   DateTime _endDate = DateTime.now();
   JoinMode _eventMode = JoinMode.free;
+  // The account being posted as; null follows the selected account.
+  String? _account;
+  API? _scopedApi;
+  Object? _accountError;
 
   @override
   void initState() {
     super.initState();
+
+    _account = widget.account;
+    if (_account != null) _loadAccountApi();
 
     _lang = context.read<AppController>().profile.defaultCreateLanguage;
 
@@ -107,18 +121,115 @@ class _CreateScreenState extends State<CreateScreen> {
     if (widget.initBody != null) _bodyTextController.text = widget.initBody!;
   }
 
+  Future<void> _loadAccountApi() async {
+    final account = _account!;
+    try {
+      final api = await context.read<AppController>().getApiForAccount(account);
+      if (!mounted || account != _account) return;
+      setState(() {
+        _scopedApi = api;
+        _accountError = null;
+      });
+    } catch (e) {
+      if (!mounted || account != _account) return;
+      setState(() => _accountError = e);
+    }
+  }
+
+  void _pickAccount(String account) {
+    if (account == _account) return;
+    setState(() {
+      _account = account;
+      _scopedApi = null;
+      _accountError = null;
+      // communities, flairs and tabs belong to the previous account
+      _community = null;
+      _postFlairs = [];
+    });
+    _loadAccountApi();
+  }
+
   @override
   Widget build(BuildContext context) {
     final ac = context.watch<AppController>();
 
+    final account = _account;
+    if (account != null) {
+      final api = _scopedApi;
+      if (api == null) {
+        return Scaffold(
+          appBar: AppBar(title: Text(l(context).action_createNew)),
+          body: Center(
+            child: _accountError == null
+                ? const CircularProgressIndicator()
+                : Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text('$account: $_accountError'),
+                  ),
+          ),
+        );
+      }
+      return AccountScope(
+        account: account,
+        api: api,
+        child: Builder(
+          builder: (context) => _buildForm(context, ac, api, account),
+        ),
+      );
+    }
+    return _buildForm(context, ac, ac.api, ac.selectedAccount);
+  }
+
+  Widget _buildForm(
+    BuildContext context,
+    AppController ac,
+    API api,
+    String account,
+  ) {
+    final software = api.client.software;
+    final instanceHost = account.split('@').last;
+
     final bodyDraftController = context.watch<DraftsController>().auto(
       widget.crossPost != null
-          ? 'crossPost:${ac.instanceHost}:${widget.crossPost!.type.name}:${widget.crossPost!.id}'
-          : 'create${widget.initCommunity == null ? '' : ':${ac.instanceHost}:${widget.initCommunity!.name}'}',
+          ? 'crossPost:$instanceHost:${widget.crossPost!.type.name}:${widget.crossPost!.id}'
+          : 'create${widget.initCommunity == null ? '' : ':$instanceHost:${widget.initCommunity!.name}'}',
     );
 
-    Widget listViewWidget(List<Widget> children) =>
-        ListView(padding: const EdgeInsets.all(12), children: children);
+    Widget accountPickerWidget() {
+      // Only when started for a chosen account (merged views); the regular
+      // flow posts as the selected account, as before.
+      if (widget.account == null) return const SizedBox.shrink();
+      final choices = postingAccounts(ac);
+      if (choices.length < 2) return const SizedBox.shrink();
+      return Padding(
+        padding: const EdgeInsets.all(8),
+        child: DropdownButtonFormField<String>(
+          initialValue: account,
+          decoration: const InputDecoration(
+            border: OutlineInputBorder(),
+            label: Text('Post as'),
+          ),
+          items: [
+            for (final a in choices)
+              DropdownMenuItem(
+                value: a,
+                child: Row(
+                  spacing: 8,
+                  children: [AccountAvatar(a, radius: 10), Text(a)],
+                ),
+              ),
+          ],
+          onChanged: (a) {
+            if (a != null) _pickAccount(a);
+          },
+        ),
+      );
+    }
+
+    Widget listViewWidget(List<Widget> children) => ListView(
+      padding: const EdgeInsets.all(12),
+      children: [accountPickerWidget(), ...children],
+    );
 
     Widget communityPickerWidget({bool microblogMode = false}) => Padding(
       padding: const EdgeInsets.all(8),
@@ -389,7 +500,22 @@ class _CreateScreenState extends State<CreateScreen> {
     Widget submitButtonWidget(Future<void> Function()? onPressed) => Padding(
       padding: const EdgeInsets.all(8),
       child: LoadingFilledButton(
-        onPressed: onPressed,
+        // A failed submit says why, here, instead of just re-enabling.
+        onPressed: onPressed == null
+            ? null
+            : () async {
+                try {
+                  await onPressed();
+                } catch (e) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Could not post: $e'),
+                      showCloseIcon: true,
+                    ),
+                  );
+                }
+              },
         icon: const Icon(Symbols.send_rounded),
         label: Text(l(context).submit),
         uesHaptics: true,
@@ -397,7 +523,7 @@ class _CreateScreenState extends State<CreateScreen> {
     );
 
     Widget? postFlairsWidget() {
-      if (ac.serverSoftware == ServerSoftware.piefed &&
+      if (software == ServerSoftware.piefed &&
           (_community?.flairs.isNotEmpty ?? false)) {
         return Padding(
           padding: const EdgeInsets.all(8),
@@ -425,8 +551,9 @@ class _CreateScreenState extends State<CreateScreen> {
     }
 
     return DefaultTabController(
+      key: ValueKey(account),
       initialIndex: _defaultTab,
-      length: switch (ac.serverSoftware) {
+      length: switch (software) {
         ServerSoftware.mastodon => throw UnsupportedError(
           'Mastodon: not supported here',
         ),
@@ -453,12 +580,12 @@ class _CreateScreenState extends State<CreateScreen> {
                 text: l(context).create_link,
                 icon: const Icon(Symbols.link_rounded),
               ),
-              if (ac.serverSoftware == ServerSoftware.mbin)
+              if (software == ServerSoftware.mbin)
                 Tab(
                   text: l(context).create_microblog,
                   icon: const Icon(Symbols.edit_note_rounded),
                 ),
-              if (ac.serverSoftware == ServerSoftware.piefed) ...[
+              if (software == ServerSoftware.piefed) ...[
                 Tab(
                   text: l(context).poll,
                   icon: const Icon(Symbols.poll_rounded),
@@ -482,8 +609,8 @@ class _CreateScreenState extends State<CreateScreen> {
               titleEditorWidget(),
               ?postFlairsWidget(),
               bodyEditorWidget(),
-              if (ac.serverSoftware == ServerSoftware.mbin) tagsEditorWidget(),
-              if (ac.serverSoftware == ServerSoftware.mbin) ocToggleWidget(),
+              if (software == ServerSoftware.mbin) tagsEditorWidget(),
+              if (software == ServerSoftware.mbin) ocToggleWidget(),
               nsfwToggleWidget(),
               languagePickerWidget(),
               submitButtonWidget(
@@ -492,7 +619,7 @@ class _CreateScreenState extends State<CreateScreen> {
                     : () async {
                         final tags = _tagsTextController.text.split(' ');
 
-                        final post = await ac.api.threads.create(
+                        final post = await api.threads.create(
                           communityId: _community!.id,
                           title: _titleTextController.text,
                           isOc: _isOc,
@@ -502,8 +629,8 @@ class _CreateScreenState extends State<CreateScreen> {
                           tags: tags,
                         );
 
-                        if (ac.serverSoftware == ServerSoftware.piefed) {
-                          await ac.api.threads.assignFlairs(
+                        if (software == ServerSoftware.piefed) {
+                          await api.threads.assignFlairs(
                             post.id,
                             _postFlairs.map((flair) => flair.id).toList(),
                           );
@@ -513,7 +640,7 @@ class _CreateScreenState extends State<CreateScreen> {
                         // Check BuildContext
                         if (!context.mounted) return;
 
-                        context.router.pop();
+                        Navigator.of(context).pop();
                       },
               ),
             ]),
@@ -522,8 +649,8 @@ class _CreateScreenState extends State<CreateScreen> {
               titleEditorWidget(),
               ?postFlairsWidget(),
               imagePickerWidget(),
-              if (ac.serverSoftware == ServerSoftware.mbin) tagsEditorWidget(),
-              if (ac.serverSoftware == ServerSoftware.mbin) ocToggleWidget(),
+              if (software == ServerSoftware.mbin) tagsEditorWidget(),
+              if (software == ServerSoftware.mbin) ocToggleWidget(),
               nsfwToggleWidget(),
               languagePickerWidget(),
               submitButtonWidget(
@@ -532,7 +659,7 @@ class _CreateScreenState extends State<CreateScreen> {
                     : () async {
                         final tags = _tagsTextController.text.split(' ');
 
-                        final post = await ac.api.threads.create(
+                        final post = await api.threads.create(
                           communityId: _community!.id,
                           title: _titleTextController.text,
                           image: _imageFile,
@@ -544,8 +671,8 @@ class _CreateScreenState extends State<CreateScreen> {
                           tags: tags,
                         );
 
-                        if (ac.serverSoftware == ServerSoftware.piefed) {
-                          await ac.api.threads.assignFlairs(
+                        if (software == ServerSoftware.piefed) {
+                          await api.threads.assignFlairs(
                             post.id,
                             _postFlairs.map((flair) => flair.id).toList(),
                           );
@@ -554,7 +681,7 @@ class _CreateScreenState extends State<CreateScreen> {
                         // Check BuildContext
                         if (!context.mounted) return;
 
-                        context.router.pop();
+                        Navigator.of(context).pop();
                       },
               ),
             ]),
@@ -564,8 +691,8 @@ class _CreateScreenState extends State<CreateScreen> {
               titleEditorWidget(),
               ?postFlairsWidget(),
               bodyEditorWidget(),
-              if (ac.serverSoftware == ServerSoftware.mbin) tagsEditorWidget(),
-              if (ac.serverSoftware == ServerSoftware.mbin) ocToggleWidget(),
+              if (software == ServerSoftware.mbin) tagsEditorWidget(),
+              if (software == ServerSoftware.mbin) ocToggleWidget(),
               nsfwToggleWidget(),
               languagePickerWidget(),
               submitButtonWidget(
@@ -574,7 +701,7 @@ class _CreateScreenState extends State<CreateScreen> {
                     : () async {
                         final tags = _tagsTextController.text.split(' ');
 
-                        final post = await ac.api.threads.create(
+                        final post = await api.threads.create(
                           communityId: _community!.id,
                           title: _titleTextController.text,
                           url: _urlTextController.text,
@@ -585,8 +712,8 @@ class _CreateScreenState extends State<CreateScreen> {
                           tags: tags,
                         );
 
-                        if (ac.serverSoftware == ServerSoftware.piefed) {
-                          await ac.api.threads.assignFlairs(
+                        if (software == ServerSoftware.piefed) {
+                          await api.threads.assignFlairs(
                             post.id,
                             _postFlairs.map((flair) => flair.id).toList(),
                           );
@@ -597,11 +724,11 @@ class _CreateScreenState extends State<CreateScreen> {
                         // Check BuildContext
                         if (!context.mounted) return;
 
-                        context.router.pop();
+                        Navigator.of(context).pop();
                       },
               ),
             ]),
-            if (ac.serverSoftware == ServerSoftware.mbin)
+            if (software == ServerSoftware.mbin)
               listViewWidget([
                 communityPickerWidget(microblogMode: true),
                 bodyEditorWidget(),
@@ -610,22 +737,17 @@ class _CreateScreenState extends State<CreateScreen> {
                 languagePickerWidget(),
                 submitButtonWidget(() async {
                   final community =
-                      _community ??
-                      await context
-                          .read<AppController>()
-                          .api
-                          .community
-                          .getByName('random');
+                      _community ?? await api.community.getByName('random');
 
                   if (_imageFile == null) {
-                    await ac.api.microblogs.create(
+                    await api.microblogs.create(
                       community.id,
                       body: _bodyTextController.text,
                       lang: _lang,
                       isAdult: _isAdult,
                     );
                   } else {
-                    await ac.api.microblogs.createImage(
+                    await api.microblogs.createImage(
                       community.id,
                       image: _imageFile!,
                       alt: '',
@@ -640,10 +762,10 @@ class _CreateScreenState extends State<CreateScreen> {
                   // Check BuildContext
                   if (!context.mounted) return;
 
-                  context.router.pop();
+                  Navigator.of(context).pop();
                 }),
               ]),
-            if (ac.serverSoftware == ServerSoftware.piefed) ...[
+            if (software == ServerSoftware.piefed) ...[
               listViewWidget([
                 communityPickerWidget(),
                 titleEditorWidget(),
@@ -660,7 +782,7 @@ class _CreateScreenState extends State<CreateScreen> {
                               ? null
                               : DateTime.now().add(_pollDuration);
 
-                          final post = await ac.api.threads.createPoll(
+                          final post = await api.threads.createPoll(
                             _community!.id,
                             title: _titleTextController.text,
                             isOc: _isOc,
@@ -673,13 +795,13 @@ class _CreateScreenState extends State<CreateScreen> {
                             endDate: endDate,
                             mode: _pollModeMultiple ? 'multiple' : 'single',
                           );
-                          await ac.api.threads.assignFlairs(
+                          await api.threads.assignFlairs(
                             post.id,
                             _postFlairs.map((flair) => flair.id).toList(),
                           );
 
                           if (!context.mounted) return;
-                          context.router.pop();
+                          Navigator.of(context).pop();
                         },
                 ),
               ]),
@@ -731,7 +853,7 @@ class _CreateScreenState extends State<CreateScreen> {
                           (_isOnline && _urlTextController.text.isEmpty)
                       ? null
                       : () async {
-                          final post = await ac.api.threads.createEvent(
+                          final post = await api.threads.createEvent(
                             _community!.id,
                             title: _titleTextController.text,
                             isOc: _isOc,
@@ -747,29 +869,39 @@ class _CreateScreenState extends State<CreateScreen> {
                                 ? null
                                 : _urlTextController.text,
                           );
-                          await ac.api.threads.assignFlairs(
+                          await api.threads.assignFlairs(
                             post.id,
                             _postFlairs.map((flair) => flair.id).toList(),
                           );
 
                           if (!context.mounted) return;
-                          context.router.pop();
+                          Navigator.of(context).pop();
                         },
                 ),
               ]),
             ],
-            CommunityOwnerPanelGeneral(
-              data: null,
-              onUpdate: (newCommunity) {
-                context.router.pop();
-                context.router.push(
-                  CommunityRoute(
-                    communityName: newCommunity.name,
-                    communityId: newCommunity.id,
-                    initData: newCommunity,
+            Column(
+              children: [
+                accountPickerWidget(),
+                Expanded(
+                  child: CommunityOwnerPanelGeneral(
+                    data: null,
+                    onUpdate: (newCommunity) {
+                      Navigator.of(context).pop();
+                      // The community route looks things up on the selected
+                      // account, so it is only opened for that one.
+                      if (widget.account != null) return;
+                      context.router.push(
+                        CommunityRoute(
+                          communityName: newCommunity.name,
+                          communityId: newCommunity.id,
+                          initData: newCommunity,
+                        ),
+                      );
+                    },
                   ),
-                );
-              },
+                ),
+              ],
             ),
           ],
         ),
@@ -777,6 +909,16 @@ class _CreateScreenState extends State<CreateScreen> {
     );
   }
 }
+
+/// Signed-in accounts that can create posts (the read-only Mastodon type
+/// cannot yet).
+List<String> postingAccounts(AppController ac) => [
+  for (final entry in ac.accounts.entries)
+    if (isAccountSignedIn(ac, entry.key) &&
+        (ac.servers[entry.key.split('@').last]?.software.canBeAppAccount ??
+            false))
+      entry.key,
+];
 
 SelectionMenu<Duration?> pollDuration(BuildContext context) =>
     SelectionMenu(l(context).pollDuration, [

@@ -4,8 +4,8 @@ import 'package:interstellar/src/controller/controller.dart';
 import 'package:interstellar/src/models/user.dart';
 import 'package:interstellar/src/screens/explore/user_screen.dart';
 import 'package:interstellar/src/utils/utils.dart';
+import 'package:interstellar/src/widgets/account_switcher.dart';
 import 'package:interstellar/src/widgets/error_page.dart';
-import 'package:interstellar/src/widgets/loading_template.dart';
 import 'package:oauth2/oauth2.dart';
 import 'package:provider/provider.dart';
 
@@ -55,16 +55,35 @@ class _SelfFeedState extends State<SelfFeed> {
   Widget build(BuildContext context) {
     final ac = context.read<AppController>();
 
+    // Every state of this tab gets the account switcher, so a guest (or an
+    // account that failed to load) can still switch to another account.
+    Widget withSwitcher(Widget body) => Scaffold(
+      appBar: AppBar(
+        title: Text(l(context).account),
+        actions: const [AccountSwitcher()],
+      ),
+      body: body,
+    );
+
     if (!ac.isLoggedIn) {
-      return Center(child: Text(l(context).notLoggedIn));
+      return withSwitcher(Center(child: Text(l(context).notLoggedIn)));
     }
 
-    if (_authError != null) return OAuthErrorPage(error: _authError!);
+    if (_authError != null) {
+      return withSwitcher(OAuthErrorPage(error: _authError!));
+    }
 
-    if (_meUser == null) return const LoadingTemplate();
+    if (_meUser == null) {
+      return withSwitcher(const Center(child: CircularProgressIndicator()));
+    }
 
     final user = _meUser!;
 
-    return UserScreen(username: user.name, userId: user.id, initData: _meUser);
+    return UserScreen(
+      username: user.name,
+      userId: user.id,
+      initData: _meUser,
+      accountsAction: const AccountSwitcher(),
+    );
   }
 }
