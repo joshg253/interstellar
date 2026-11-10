@@ -62,7 +62,7 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
   CrossAccountFeed<PostModel>? _feed;
   bool _loading = false;
   Object? _setupError;
-  // The skip notice the user closed (its text names the accounts and source).
+  // The skip notice the user closed: its source and skipped accounts.
   String? _dismissedSkip;
   late FeedSource _filter;
   late FeedSort _sort;
@@ -505,23 +505,29 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
     final ac = context.watch<AppController>();
     // Ticked accounts that cannot serve this source (e.g. guests on a
     // personal feed) are left out; say so rather than silently.
-    final skipped = _community != null
+    final skippedAccounts = _community != null
         ? const <String>[]
         : [
             for (final account in ac.accounts.keys)
               if (widget.accounts.includes(account) &&
                   _apis.containsKey(account) &&
                   !_supports(ac, account, _filter))
-                // guests have no name, only the server
-                '${isAccountSignedIn(ac, account) ? account : '${account.split('@').last} (guest)'}'
-                    ' has no ${_filter.title(context)} feed',
+                account,
           ];
-    // closed by the user; a different skipped set shows it again
-    final skipText = skipped.join('\n');
-    if (skipText != _dismissedSkip) _dismissedSkip = null;
+    final skipped = [
+      for (final account in skippedAccounts)
+        // guests have no name, only the server
+        '${isAccountSignedIn(ac, account) ? account : '${account.split('@').last} (guest)'}'
+            ' has no ${_filter.title(context)} feed',
+    ];
+    // closed by the user; another source or set of skipped accounts shows it
+    // again
+    final skipKey =
+        '${_filter.name}|${(skippedAccounts.toList()..sort()).join(',')}';
+    if (skipKey != _dismissedSkip) _dismissedSkip = null;
     final skipNotice = skipped.isEmpty || _dismissedSkip != null
         ? null
-        : skipText;
+        : skipped.join('\n');
     final headers = (problems.isEmpty ? 0 : 1) + (skipNotice == null ? 0 : 1);
     final hideRead = _effectiveHideRead(ac);
     final visible = _visible(ac);
@@ -676,8 +682,7 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
                   content: Text(skipNotice),
                   actions: [
                     TextButton(
-                      onPressed: () =>
-                          setState(() => _dismissedSkip = skipNotice),
+                      onPressed: () => setState(() => _dismissedSkip = skipKey),
                       child: const Text('Dismiss'),
                     ),
                   ],
@@ -737,7 +742,10 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
                 return const SizedBox(height: 48);
               }
               final (account, post) = visible[i];
+              // keyed, so a banner appearing or going away does not hand one
+              // post's state (e.g. a translation) to another row
               return ValueListenableBuilder<String?>(
+                key: ValueKey((account, post.id)),
                 valueListenable: interactAccount,
                 builder: (context, _, _) {
                   final ac = context.watch<AppController>();
