@@ -40,11 +40,14 @@ class APIBookmark {
   final ServerClient client;
 
   /// Mbin leaves the user's own vote out of a bookmark list (`null`, where other
-  /// lists say `false` or 0), so a bookmarked item you voted on would show no
-  /// vote and a tap would undo it. Those items are fetched for their vote (on
-  /// Mbin that also marks the user's unread notifications for a fetched thread
-  /// or post as read, as opening it would). One that cannot be fetched is kept
-  /// as listed.
+  /// lists say `false` or 0), because its bookmark list builds items through a
+  /// path that drops those fields (checked against Mbin's source, Nov 2026).
+  /// A bookmarked item you voted on would show no vote and a tap would undo
+  /// it, so those items are fetched for their vote (on Mbin that also marks the
+  /// user's unread notifications for a fetched thread or post as read, as
+  /// opening it would). One that cannot be fetched is kept as listed.
+  ///
+  /// If a later Mbin fills the fields in, this lookup and [withOwnVote] can go.
   Future<List<JsonMap>> _withOwnVotes(List<JsonMap> items) async {
     Future<JsonMap> withVote(JsonMap item) async {
       if (item['isFavourited'] != null || item['userVote'] != null) {
@@ -79,21 +82,61 @@ class APIBookmark {
     ];
   }
 
-  Future<(List<Object>, String?)> list({String? list, String? page}) async {
+  /// Fetches the user's own vote on one Mbin bookmark, for a list that was
+  /// loaded with `ownVotes: false`. Anything that cannot be fetched is returned
+  /// as it was.
+  Future<Object> withOwnVote(Object item) async {
+    final path = switch (item) {
+      PostModel(type: PostType.thread, :final id) => '/entry/$id',
+      PostModel(type: PostType.microblog, :final id) => '/post/$id',
+      CommentModel(postType: PostType.thread, :final id) => '/comments/$id',
+      CommentModel(postType: PostType.microblog, :final id) =>
+        '/post-comments/$id',
+      _ => null,
+    };
+    if (path == null) return item;
+    try {
+      final fresh = (await client.get(path)).bodyJson;
+      final myVote = (fresh['isFavourited'] as bool?) ?? false
+          ? 1
+          : ((fresh['userVote'] as int?) == -1 ? -1 : 0);
+      final myBoost = (fresh['userVote'] as int?) == 1;
+      return switch (item) {
+        PostModel() => item.copyWith(myVote: myVote, myBoost: myBoost),
+        CommentModel() => item.copyWith(myVote: myVote, myBoost: myBoost),
+        _ => item,
+      };
+    } on Object {
+      return item;
+    }
+  }
+
+  /// With [ownVotes] false, Mbin items come back without the user's vote (see
+  /// [withOwnVote]), so a caller that hides some of them can skip the lookup,
+  /// which marks notifications read, for what it does not show.
+  Future<(List<Object>, String?)> list({
+    String? list,
+    String? page,
+    String sort = 'newest',
+    bool ownVotes = true,
+  }) async {
     switch (client.software) {
       case ServerSoftware.mastodon:
         final (items, next) = await MastodonAPI(client).bookmarks(page: page);
         return (items, next);
       case ServerSoftware.mbin:
         const path = '/bookmark-lists/show';
-        final query = {'list': list, 'sort': 'newest', 'p': page};
+        final query = {'list': list, 'sort': sort, 'p': page};
 
         final response = await client.get(path, queryParams: query);
 
         final json = response.bodyJson;
-        final itemList = await _withOwnVotes(
-          (json['items']! as List<dynamic>).cast<JsonMap>(),
-        );
+        // PHP writes an array with gaps in its keys as an object.
+        final rawItems = json['items']!;
+        final listed =
+            (rawItems is Map ? rawItems.values.toList() : rawItems as List)
+                .cast<JsonMap>();
+        final itemList = ownVotes ? await _withOwnVotes(listed) : listed;
         final items = itemList
             .map((item) {
               final itemType = item['itemType'];

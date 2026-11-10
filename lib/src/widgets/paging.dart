@@ -117,15 +117,15 @@ class AdvancedPagingController<PageKeyType, PageItemType, PageItemIdType>
       }
     } finally {
       if (operation == this.operation) {
-        value = state.copyWith(
-          isLoading: false,
-          hasNextPage: _nextPage != null,
-        );
         // A failed page keeps its key, so trying again fetches it again.
         if (!failed) {
           _nextPage = newNextPage;
           _itemIds = newItemIds;
         }
+        value = state.copyWith(
+          isLoading: false,
+          hasNextPage: _nextPage != null,
+        );
         this.operation = null;
       }
     }
