@@ -11,6 +11,8 @@ import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:interstellar/src/api/api.dart';
 import 'package:interstellar/src/api/client.dart';
 import 'package:interstellar/src/api/feed_source.dart';
+import 'package:interstellar/src/api/mastodon.dart';
+import 'package:interstellar/src/api/mastodon_auth.dart';
 import 'package:interstellar/src/api/oauth.dart';
 import 'package:interstellar/src/controller/database/database.dart';
 import 'package:interstellar/src/controller/feed.dart';
@@ -459,6 +461,48 @@ class AppController with ChangeNotifier {
     return oauthIdentifier;
   }
 
+  /// Opens an OAuth authorize page and returns the redirect URL it ends on,
+  /// or null if the user backed out.
+  Future<String?> _authorizeInBrowser(
+    Uri authorizationUrl,
+    BuildContext? context,
+  ) async {
+    WebViewController? webViewController;
+    // The redirect can be requested more than once (e.g. a server's
+    // interstitial page); a second pop would close the screen underneath.
+    var redirected = false;
+    if (PlatformIs.android) {
+      webViewController = WebViewController()
+        ..setJavaScriptMode(JavaScriptMode.unrestricted)
+        ..setNavigationDelegate(
+          NavigationDelegate(
+            onNavigationRequest: (request) {
+              if (request.url.startsWith(oauthRedirectUri.toString())) {
+                if (redirected) return NavigationDecision.prevent;
+                redirected = true;
+                WebViewCookieManager().clearCookies();
+                context?.router.pop(request.url);
+                return NavigationDecision.prevent;
+              }
+              return NavigationDecision.navigate;
+            },
+          ),
+        )
+        ..loadRequest(authorizationUrl);
+    }
+
+    return PlatformIs.android
+        ? await context?.router.push<String>(
+            WebViewRoute(controller: webViewController!),
+          )
+        : await FlutterWebAuth2.authenticate(
+            url: authorizationUrl.toString(),
+            callbackUrlScheme: PlatformIs.linux || PlatformIs.windows
+                ? oauthRedirectUri.toString()
+                : oauthRedirectUri.scheme,
+          );
+  }
+
   Future<void> login({
     required ServerSoftware software,
     required String server,
@@ -469,7 +513,47 @@ class AppController with ChangeNotifier {
   }) async {
     switch (software) {
       case ServerSoftware.mastodon:
-        throw UnsupportedError('Mastodon: not supported here');
+        final auth = MastodonAuth(appHttpClient, server, oauthRedirectUri);
+        final app = await auth.registerApp();
+        final authorization = auth.authorization(app);
+
+        final res = await _authorizeInBrowser(authorization.url, context);
+        if (res == null) return;
+
+        final result = Uri.parse(res).queryParameters;
+        if (result.containsKey('code') &&
+            result['state'] != authorization.state) {
+          throw Exception('unsuccessful login');
+        }
+        if (!result.containsKey('code')) {
+          throw Exception(
+            result['error_description'] ??
+                result['error'] ??
+                'unsuccessful login',
+          );
+        }
+
+        final token = await auth.exchangeCode(
+          app,
+          code: result['code']!,
+          codeVerifier: authorization.codeVerifier,
+        );
+
+        final user = await MastodonAPI(
+          ServerClient(
+            httpClient: JwtHttpClient(token, appHttpClient),
+            software: software,
+            domain: server,
+          ),
+        ).me();
+
+        final handle = '${user.name}@$server';
+        await setAccount(
+          handle,
+          Account(handle: handle, jwt: token, isPushRegistered: false),
+        );
+
+        return;
       case ServerSoftware.lemmy:
       case ServerSoftware.piefed:
         final loginPath = '${software.apiPathPrefix}/user/login';
@@ -533,35 +617,7 @@ class AppController with ChangeNotifier {
           scopes: oauthScopes,
         );
 
-        WebViewController? webViewController;
-        if (PlatformIs.android) {
-          webViewController = WebViewController()
-            ..setJavaScriptMode(JavaScriptMode.unrestricted)
-            ..setNavigationDelegate(
-              NavigationDelegate(
-                onNavigationRequest: (request) {
-                  if (request.url.startsWith(oauthRedirectUri.toString())) {
-                    WebViewCookieManager().clearCookies();
-                    context?.router.pop(request.url);
-                    return NavigationDecision.prevent;
-                  }
-                  return NavigationDecision.navigate;
-                },
-              ),
-            )
-            ..loadRequest(authorizationUrl);
-        }
-
-        final res = PlatformIs.android
-            ? await context?.router.push<String>(
-                WebViewRoute(controller: webViewController!),
-              )
-            : await FlutterWebAuth2.authenticate(
-                url: authorizationUrl.toString(),
-                callbackUrlScheme: PlatformIs.linux || PlatformIs.windows
-                    ? oauthRedirectUri.toString()
-                    : oauthRedirectUri.scheme,
-              );
+        final res = await _authorizeInBrowser(authorizationUrl, context);
         if (res == null) {
           return;
         }

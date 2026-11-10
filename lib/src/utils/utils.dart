@@ -77,15 +77,11 @@ String dateDiffFormat({required DateTime start, DateTime? end}) {
   return '${seconds}s';
 }
 
-/// Whether an account can write: it needs credentials, and its server type
-/// must support writing (guests and read-only types cannot). A [standIn] copy
+/// Whether an account can write: it needs credentials (guests cannot). A [standIn] copy
 /// is shown in place of the chosen account's, which has none: acting on it
 /// would act as the wrong account.
-bool canWriteAs({
-  required bool signedIn,
-  required ServerSoftware software,
-  bool standIn = false,
-}) => signedIn && software.canBeAppAccount && !standIn;
+bool canWriteAs({required bool signedIn, bool standIn = false}) =>
+    signedIn && !standIn;
 
 /// [value] when the acting account may write, else [otherwise]. Inside an
 /// [AccountScope] (merged views) that is the scope's account, not the
@@ -105,7 +101,6 @@ T? whenLoggedIn<T>(
       ? ac.isLoggedIn
       : canWriteAs(
           signedIn: isAccountSignedIn(ac, account),
-          software: software,
           standIn: scope.standIn,
         );
   return loggedIn &&

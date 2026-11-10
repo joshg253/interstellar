@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:interstellar/src/api/api.dart';
 import 'package:interstellar/src/api/client.dart';
 import 'package:interstellar/src/api/feed_source.dart';
 import 'package:interstellar/src/api/mastodon.dart';
@@ -264,39 +263,5 @@ void main() {
 
       expect(list.items, hasLength(1));
     });
-  });
-
-  group('writes are refused without a request', () {
-    // Mastodon is read-only here; the microblog calls are Mbin's and must not
-    // be sent to a Mastodon server.
-    for (final (name, call) in <(String, Future<Object?> Function(API))>[
-      ('putVote', (api) => api.microblogs.putVote(1, 1)),
-      ('putFavorite', (api) => api.microblogs.putFavorite(1)),
-      ('edit', (api) => api.microblogs.edit(1, 'x', 'en', false)),
-      ('delete', (api) => api.microblogs.delete(1)),
-      (
-        'create',
-        (api) =>
-            api.microblogs.create(0, body: 'x', lang: 'en', isAdult: false),
-      ),
-      ('report', (api) => api.microblogs.report(1, 'x')),
-    ]) {
-      test(name, () async {
-        var requests = 0;
-        final api = API(
-          ServerClient(
-            httpClient: MockClient((r) async {
-              requests++;
-              return http.Response('{}', 200);
-            }),
-            software: ServerSoftware.mastodon,
-            domain: _host,
-          ),
-        );
-
-        await expectLater(call(api), throwsA(isA<UnsupportedError>()));
-        expect(requests, 0);
-      });
-    }
   });
 }

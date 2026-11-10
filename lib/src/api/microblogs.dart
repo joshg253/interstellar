@@ -64,7 +64,11 @@ class MbinAPIMicroblogs {
 
   Future<PostModel> putVote(int postID, int choice) async {
     if (client.software == ServerSoftware.mastodon) {
-      throw UnsupportedError('Mastodon: read-only');
+      if (choice != 1) throw UnsupportedError('Mastodon: no downvotes');
+      return mastodonPost(
+        await MastodonAPI(client).toggleReblog(postID),
+        client.domain,
+      );
     }
     final path = '/post/$postID/vote/$choice';
 
@@ -75,7 +79,10 @@ class MbinAPIMicroblogs {
 
   Future<PostModel> putFavorite(int postID) async {
     if (client.software == ServerSoftware.mastodon) {
-      throw UnsupportedError('Mastodon: read-only');
+      return mastodonPost(
+        await MastodonAPI(client).toggleFavourite(postID),
+        client.domain,
+      );
     }
     final path = '/post/$postID/favourite';
 
@@ -91,7 +98,8 @@ class MbinAPIMicroblogs {
     bool isAdult,
   ) async {
     if (client.software == ServerSoftware.mastodon) {
-      throw UnsupportedError('Mastodon: read-only');
+      // The editor holds the rendered markdown, not the status source.
+      throw UnsupportedError('Mastodon: editing is not supported yet');
     }
     final path = '/post/$postID';
 
@@ -105,7 +113,7 @@ class MbinAPIMicroblogs {
 
   Future<void> delete(int postID) async {
     if (client.software == ServerSoftware.mastodon) {
-      throw UnsupportedError('Mastodon: read-only');
+      return MastodonAPI(client).deleteStatus(postID);
     }
     final path = '/post/$postID';
 
@@ -119,7 +127,12 @@ class MbinAPIMicroblogs {
     required bool isAdult,
   }) async {
     if (client.software == ServerSoftware.mastodon) {
-      throw UnsupportedError('Mastodon: read-only');
+      return mastodonPost(
+        await MastodonAPI(
+          client,
+        ).createStatus(body, lang: lang, sensitive: isAdult),
+        client.domain,
+      );
     }
     final path = '/magazine/$communityId/posts';
 
@@ -140,7 +153,7 @@ class MbinAPIMicroblogs {
     required bool isAdult,
   }) async {
     if (client.software == ServerSoftware.mastodon) {
-      throw UnsupportedError('Mastodon: read-only');
+      throw UnsupportedError('Mastodon: image posts not supported yet');
     }
     final path = '/magazine/$communityId/posts/image';
 
@@ -160,7 +173,7 @@ class MbinAPIMicroblogs {
 
   Future<void> report(int postId, String reason) async {
     if (client.software == ServerSoftware.mastodon) {
-      throw UnsupportedError('Mastodon: read-only');
+      return MastodonAPI(client).reportStatus(postId, reason);
     }
     final path = '/post/$postId/report';
 
