@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:interstellar/src/controller/controller.dart';
@@ -183,11 +185,53 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
             page: nullIfEmpty(pageKey),
             list: widget.bookmarkList,
             sort: _sort.mbinValue,
+            // Looked up below, and only for what the filter shows.
+            ownVotes: false,
           );
 
           return (bookmarks.$1, bookmarks.$2);
         },
       );
+
+  /// Ids of items whose own vote is already fetched or being fetched.
+  final _voted = <String>{};
+
+  bool get _isMbin =>
+      context.read<AppController>().serverSoftware == ServerSoftware.mbin;
+
+  @override
+  void initState() {
+    super.initState();
+    _pagingController.addListener(_syncVotes);
+  }
+
+  String _key(dynamic item) => '${item.runtimeType}:${item.id}';
+
+  /// Mbin leaves your vote out of a bookmark list, and looking one up marks
+  /// notifications read, so only items that are shown get that lookup.
+  Future<void> _syncVotes() async {
+    final pages = _pagingController.value.pages;
+    if (pages == null) {
+      _voted.clear();
+      return;
+    }
+    if (!_isMbin) return;
+    final todo = [
+      for (final dynamic item in pages.expand((p) => p))
+        if (_filter.matches(item as Object) && _voted.add(_key(item))) item,
+    ];
+    final api = context.read<AppController>().api.bookmark;
+    for (var i = 0; i < todo.length; i += 5) {
+      final batch = todo.skip(i).take(5).toList();
+      final fresh = await Future.wait(batch.map(api.withOwnVote));
+      if (!mounted) return;
+      for (var j = 0; j < batch.length; j++) {
+        if (!identical(batch[j], fresh[j])) {
+          _pagingController.updateItem(batch[j], fresh[j]);
+        }
+      }
+    }
+  }
 
   int _matches() =>
       _pagingController.value.pages
@@ -198,6 +242,7 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
 
   void _setFilter(BookmarkFilter filter) {
     setState(() => _filter = filter);
+    unawaited(_syncVotes());
   }
 
   void _setSort(BookmarkSort sort) {
@@ -372,7 +417,9 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
 
   @override
   void dispose() {
-    _pagingController.dispose();
+    _pagingController
+      ..removeListener(_syncVotes)
+      ..dispose();
     _searchController.dispose();
     super.dispose();
   }

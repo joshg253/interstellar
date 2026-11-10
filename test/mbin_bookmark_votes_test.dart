@@ -85,6 +85,27 @@ void main() {
     expect((items.single as PostModel).myVote, 1);
   });
 
+  test(
+    'with ownVotes off, nothing is fetched until withOwnVote asks',
+    () async {
+      final paths = <String>[];
+      final api = _api((r) {
+        paths.add(r.url.path);
+        return r.url.path.endsWith('/bookmark-lists/show')
+            ? _json(_page([_entry(5), _comment(7, 'entry_comment')]))
+            : _json(_entry(5, userVote: 1, favourited: false));
+      });
+
+      final (items, _) = await api.list(ownVotes: false);
+      expect(paths, hasLength(1));
+      expect((items.first as PostModel).myBoost, isFalse);
+
+      final fresh = await api.withOwnVote(items.first) as PostModel;
+      expect(fresh.myBoost, isTrue);
+      expect(paths.last, endsWith('/entry/5'));
+    },
+  );
+
   test('a bookmark that carries its vote is not fetched again', () async {
     final paths = <String>[];
     final api = _api((r) {
