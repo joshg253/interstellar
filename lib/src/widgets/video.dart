@@ -25,10 +25,18 @@ bool isSupportedYouTubeVideo(Uri link) {
 }
 
 class VideoPlayer extends StatefulWidget {
-  const VideoPlayer(this.uri, {super.key, this.enableBlur = false});
+  const VideoPlayer(
+    this.uri, {
+    super.key,
+    this.enableBlur = false,
+    this.autoPlay,
+  });
 
   final Uri uri;
   final bool enableBlur;
+
+  /// Overrides the profile's auto-play setting.
+  final bool? autoPlay;
 
   @override
   State<VideoPlayer> createState() => _VideoPlayerState();
@@ -40,9 +48,27 @@ class _VideoPlayerState extends State<VideoPlayer> {
   bool _isPlaying = false;
   youtube_explode_dart.YoutubeExplode? yt;
   String? error;
+  // Fullscreen is a route of its own, which must not pause the player.
+  bool _fullscreen = false;
+
+  // Rotating to fullscreen can rebuild the whole app shell (rail instead of
+  // bottom bar), destroying this widget while the fullscreen route still shows
+  // its player. The player is then released when fullscreen closes.
+  bool _disposed = false;
+
+  void _setFullscreen(bool value) {
+    _fullscreen = value;
+    if (!value && _disposed) _release();
+  }
+
+  void _release() {
+    yt?.close();
+    unawaited(player.dispose());
+  }
 
   Future<void> _initController() async {
-    final autoPlay = context.read<AppController>().profile.autoPlayVideos;
+    final autoPlay =
+        widget.autoPlay ?? context.read<AppController>().profile.autoPlayVideos;
     setState(() {
       _isPlaying = autoPlay;
     });
@@ -84,7 +110,7 @@ class _VideoPlayerState extends State<VideoPlayer> {
         await player.open(Media(widget.uri.toString()), play: _isPlaying);
       }
     } catch (e) {
-      error = e.toString();
+      if (mounted) setState(() => error = e.toString());
     }
   }
 
@@ -129,6 +155,17 @@ class _VideoPlayerState extends State<VideoPlayer> {
                 ],
               ),
               child: Video(
+                onEnterFullscreen: () async {
+                  _setFullscreen(true);
+                  await defaultEnterNativeFullscreen();
+                },
+                onExitFullscreen: () async {
+                  try {
+                    await defaultExitNativeFullscreen();
+                  } finally {
+                    _setFullscreen(false);
+                  }
+                },
                 controller: controller,
                 controls: (state) {
                   return Stack(
@@ -163,15 +200,19 @@ class _VideoPlayerState extends State<VideoPlayer> {
 
   @override
   void dispose() {
-    yt?.close();
-    unawaited(player.dispose());
+    _disposed = true;
+    if (!_fullscreen) _release();
     super.dispose();
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // Entering fullscreen pushes a route; give its controls a moment to say
+      // so before treating the route change as navigating away.
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      if (!mounted || _fullscreen) return;
       if (!(ModalRoute.of(context)?.isCurrent ?? false)) {
         unawaited(player.pause());
       }

@@ -17,6 +17,7 @@ import 'package:interstellar/src/models/post.dart';
 import 'package:interstellar/src/models/user.dart';
 import 'package:interstellar/src/utils/language.dart';
 import 'package:interstellar/src/utils/utils.dart';
+import 'package:interstellar/src/utils/video_url.dart';
 import 'package:interstellar/src/widgets/account_scope.dart';
 import 'package:interstellar/src/widgets/content_item/action_buttons.dart';
 import 'package:interstellar/src/widgets/content_item/content_info.dart';
@@ -228,9 +229,18 @@ class ContentItem extends StatefulWidget {
 
 class _ContentItemState extends State<ContentItem> {
   bool _isReplying = false;
+  // In a list a video shows its thumbnail until it is tapped.
+  bool _playInList = false;
   TextEditingController? _editTextController;
 
   List<Tag> _userTags = [];
+
+  @override
+  void didUpdateWidget(ContentItem oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // A list can hand this state to another post.
+    if (oldWidget.link != widget.link) _playInList = false;
+  }
 
   @override
   void initState() {
@@ -316,8 +326,13 @@ class _ContentItemState extends State<ContentItem> {
       widget.editDraftResourceId,
     );
 
-    final isVideo =
-        widget.link != null && isSupportedYouTubeVideo(widget.link!);
+    final link = widget.link;
+    final videoUri = link == null
+        ? null
+        : isSupportedYouTubeVideo(link)
+        ? link
+        : playableVideoUrl(link);
+    final isVideo = videoUri != null;
 
     final menuWidget = IconButton(
       padding: EdgeInsets.zero,
@@ -392,11 +407,48 @@ class _ContentItemState extends State<ContentItem> {
               width: constraints.maxWidth,
               isThumbnail: isThumbnail,
             );
-            final video = !widget.isPreview && isVideo
-                ? VideoPlayer(
-                    widget.link!,
-                    enableBlur:
-                        widget.isNSFW && ac.profile.coverMediaMarkedSensitive,
+            final showPlayer = isVideo && (!widget.isPreview || _playInList);
+            final video = showPlayer
+                ? Wrapper(
+                    // A tap on the player (to pause) must not open the post.
+                    shouldWrap: widget.isPreview,
+                    parentBuilder: (child) => GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () {},
+                      child: child,
+                    ),
+                    child: VideoPlayer(
+                      videoUri,
+                      key: ValueKey(videoUri),
+                      autoPlay: _playInList ? true : null,
+                      enableBlur:
+                          widget.isNSFW && ac.profile.coverMediaMarkedSensitive,
+                    ),
+                  )
+                : isVideo && widget.isPreview
+                ? Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      image ??
+                          const SizedBox(
+                            height: 160,
+                            width: double.infinity,
+                            child: ColoredBox(color: Colors.black),
+                          ),
+                      Positioned.fill(
+                        child: InkWell(
+                          onTap: () => setState(() => _playInList = true),
+                          child: const Center(
+                            child: Icon(
+                              Symbols.play_circle_rounded,
+                              size: 56,
+                              color: Colors.white,
+                              shadows: [Shadow(blurRadius: 8)],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   )
                 : null;
 
