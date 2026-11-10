@@ -52,12 +52,13 @@ jobs:
           # Pull request runs save the cache too, so one good download is kept.
           cache-read-only: false
 
-      # Retry, as the Gradle and Maven downloads sometimes fail with a 504.
+      # Retry, as the Gradle and Maven downloads sometimes fail with a 504. One ABI is enough to prove the build works;
+      # the release workflow still builds all of them.
       - name: Build Flutter app
         run: |
           dart run build_runner build
           for attempt in 1 2 3 4 5; do
-            flutter build -v apk --split-per-abi && exit 0
+            flutter build -v apk --target-platform android-arm64 && exit 0
             echo "Build failed (attempt $attempt of 5), retrying in $((attempt * 60)) seconds."
             sleep $((attempt * 60))
           done
