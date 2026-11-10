@@ -34,8 +34,8 @@ class _PollState extends State<Poll> {
 
     final expired = widget.poll.endPoll.isBefore(DateTime.now());
     _submitted = (whenLoggedIn(context, answer != null) ?? true) || expired;
-    // nothing left to vote on: show how it ended
-    _showResults = expired;
+    // nothing left to vote on, or already voted: show how it stands
+    _showResults = expired || answer != null;
   }
 
   String getTimeTillExpire() {
@@ -200,6 +200,8 @@ class _PollState extends State<Poll> {
                       setState(() {
                         _choices = post.poll?.choices.toList() ?? _choices;
                         _submitted = true;
+                        // swap the controls for how it stands
+                        _showResults = true;
                       });
                     } catch (e) {
                       // e.g. the poll closed, or this account already voted
