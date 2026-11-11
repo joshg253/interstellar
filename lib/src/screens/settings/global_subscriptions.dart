@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
+import 'package:interstellar/src/api/blocks.dart';
 import 'package:interstellar/src/controller/controller.dart';
 import 'package:interstellar/src/controller/global_subs.dart';
 import 'package:interstellar/src/controller/router.gr.dart';
@@ -22,34 +23,60 @@ GlobalSubsController globalSubsFor(AppController ac) =>
         final dir = await getApplicationSupportDirectory();
         return File(p.join(dir.path, 'global_subscriptions.json'));
       }),
-      fetch: (account, cancelled) async {
+      fetch: (account, kind, cancelled) async {
         final api = await ac.getApiForAccount(account);
         final host = account.split('@').last;
-        final names = <String>{};
-        String? page;
-        var pages = 0;
-        do {
-          if (cancelled()) return null;
-          final res = await api.community.list(
-            page: page,
-            filter: ExploreFilter.subscribed,
-          );
-          names.addAll(res.items.map((e) => normalizeName(e.name, host)));
-          page = res.nextPage;
-        } while (page != null && ++pages < _maxPages);
-        return names;
+        switch (kind) {
+          case SubsKind.communityBlocks:
+            return listBlocked(api, host, users: false);
+          case SubsKind.userBlocks:
+            return listBlocked(api, host, users: true);
+          case SubsKind.communities:
+            final names = <String>{};
+            String? page;
+            var pages = 0;
+            do {
+              if (cancelled()) return null;
+              final res = await api.community.list(
+                page: page,
+                filter: ExploreFilter.subscribed,
+              );
+              names.addAll(res.items.map((e) => normalizeName(e.name, host)));
+              page = res.nextPage;
+            } while (page != null && ++pages < _maxPages);
+            return names;
+        }
       },
-      apply: (account, community, state) async {
+      apply: (account, kind, name, state) async {
         final api = await ac.getApiForAccount(account);
         final host = account.split('@').last;
-        final found = await api.community.getByName(
-          denormalizeName(community, host),
-        );
-        if (found.isUserSubscribed != state) {
-          await api.community.subscribe(found.id, state);
+        final local = denormalizeName(name, host);
+        switch (kind) {
+          case SubsKind.communities:
+            final found = await api.community.getByName(local);
+            if (found.isUserSubscribed != state) {
+              await api.community.subscribe(found.id, state);
+            }
+          case SubsKind.communityBlocks:
+            final found = await api.community.getByName(local);
+            if ((found.isBlockedByUser ?? false) != state) {
+              await api.community.block(found.id, state);
+            }
+          case SubsKind.userBlocks:
+            final found = await api.users.getByName(local);
+            if ((found.isBlockedByUser ?? false) != state) {
+              await api.users.putBlock(found.id, state);
+            }
         }
       },
     );
+
+String globalSubsKindLabel(BuildContext context, SubsKind kind) =>
+    switch (kind) {
+      SubsKind.communities => l(context).globalSubs_kind_communities,
+      SubsKind.communityBlocks => l(context).globalSubs_kind_communityBlocks,
+      SubsKind.userBlocks => l(context).globalSubs_kind_userBlocks,
+    };
 
 /// Accounts that can list communities: signed in, and not Mastodon.
 List<String> globalSubsAccounts(AppController ac) => [
@@ -81,6 +108,24 @@ class _GlobalSubscriptionsScreenState extends State<GlobalSubscriptionsScreen> {
     globalSubsFor(context.read<AppController>()).load();
   }
 
+  String _info(BuildContext context, GlobalSubsController subs, String a) {
+    final c = subs.snapshots[SubsKind.communities]![a];
+    final cb = subs.snapshots[SubsKind.communityBlocks]![a];
+    final ub = subs.snapshots[SubsKind.userBlocks]![a];
+    final times = [
+      c,
+      cb,
+      ub,
+    ].whereType<AccountSnapshot>().map((e) => e.updated);
+    if (times.isEmpty) return l(context).globalSubs_notFetched;
+    return l(context).globalSubs_accountInfo(
+      c?.subs.length ?? 0,
+      cb?.subs.length ?? 0,
+      ub?.subs.length ?? 0,
+      globalSubsWhen(times.reduce((x, y) => x.isAfter(y) ? x : y)),
+    );
+  }
+
   IconData _icon(JobStep? step) => switch (step) {
     JobStep.done => Icons.check_circle_outline,
     JobStep.failed => Icons.error_outline,
@@ -104,20 +149,25 @@ class _GlobalSubscriptionsScreenState extends State<GlobalSubscriptionsScreen> {
       body: ListenableBuilder(
         listenable: subs,
         builder: (context, _) {
-          final master = subs.master;
           return ListView(
             children: [
-              ListTile(
-                leading: const Icon(Icons.save_outlined),
-                title: Text(
-                  master == null
-                      ? l(context).globalSubs_notSaved
-                      : l(context).globalSubs_saved(
-                          master.length,
-                          globalSubsWhen(subs.masterUpdated!),
-                        ),
+              if (subs.master.isEmpty)
+                ListTile(
+                  leading: const Icon(Icons.save_outlined),
+                  title: Text(l(context).globalSubs_notSaved),
                 ),
-              ),
+              for (final kind in SubsKind.values)
+                if (subs.master[kind] != null)
+                  ListTile(
+                    leading: const Icon(Icons.save_outlined),
+                    title: Text(
+                      l(context).globalSubs_saved(
+                        globalSubsKindLabel(context, kind),
+                        subs.master[kind]!.length,
+                        globalSubsWhen(subs.masterUpdated[kind]!),
+                      ),
+                    ),
+                  ),
               if (subs.running) ...[
                 LinearProgressIndicator(
                   value: subs.total == 0 ? null : subs.done / subs.total,
@@ -140,7 +190,7 @@ class _GlobalSubscriptionsScreenState extends State<GlobalSubscriptionsScreen> {
                   onChanged: subs.running
                       ? null
                       : (v) => setState(
-                          () => v == true
+                          () => (v ?? false)
                               ? _unchecked.remove(account)
                               : _unchecked.add(account),
                         ),
@@ -148,14 +198,7 @@ class _GlobalSubscriptionsScreenState extends State<GlobalSubscriptionsScreen> {
                       ? Icon(_icon(subs.steps[account]))
                       : null,
                   title: Text(account),
-                  subtitle: Text(
-                    subs.snapshots[account] == null
-                        ? l(context).globalSubs_notFetched
-                        : l(context).globalSubs_accountInfo(
-                            subs.snapshots[account]!.subs.length,
-                            globalSubsWhen(subs.snapshots[account]!.updated),
-                          ),
-                  ),
+                  subtitle: Text(_info(context, subs, account)),
                 ),
               if (subs.failures.isNotEmpty && !subs.running)
                 ExpansionTile(
@@ -180,14 +223,14 @@ class _GlobalSubscriptionsScreenState extends State<GlobalSubscriptionsScreen> {
                 leading: const Icon(Icons.merge_type),
                 title: Text(l(context).globalSubs_saveMerged),
                 subtitle: Text(l(context).globalSubs_saveMerged_help),
-                enabled: !subs.running && subs.snapshots.isNotEmpty,
+                enabled: !subs.running && subs.hasData,
                 onTap: subs.saveMerged,
               ),
               ListTile(
                 leading: const Icon(Icons.compare_arrows),
                 title: Text(l(context).globalSubs_compare),
                 subtitle: Text(l(context).globalSubs_compare_help),
-                enabled: subs.snapshots.isNotEmpty,
+                enabled: subs.hasData,
                 onTap: () => context.router.push(
                   const GlobalSubscriptionsCompareRoute(),
                 ),

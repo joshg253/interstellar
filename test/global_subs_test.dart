@@ -13,19 +13,23 @@ class _MemStore implements SubsStore {
   Future<void> write(Map<String, dynamic> d) async => data = d;
 }
 
+const a = 'a@x.example';
+const b = 'b@y.example';
+
+/// [server] answers per kind, then per account.
 GlobalSubsController _make(
   _MemStore store, {
-  Map<String, Set<String>> server = const {},
-  Set<String> failing = const {},
+  Map<SubsKind, Map<String, Set<String>>> server = const {},
+  Set<(String, SubsKind)> failing = const {},
   List<String>? applied,
 }) => GlobalSubsController(
   store: store,
-  fetch: (account, cancelled) async {
-    if (failing.contains(account)) throw StateError('down');
-    return cancelled() ? null : server[account] ?? {};
+  fetch: (account, kind, cancelled) async {
+    if (failing.contains((account, kind))) throw StateError('down');
+    return cancelled() ? null : server[kind]?[account] ?? {};
   },
-  apply: (account, community, state) async =>
-      applied?.add('$account $community $state'),
+  apply: (account, kind, name, state) async =>
+      applied?.add('$account ${kind.name} $name $state'),
 );
 
 void main() {
@@ -34,91 +38,124 @@ void main() {
     final c = _make(
       store,
       server: {
-        'a@x.example': {'one@x.example', 'two@y.example'},
-        'b@y.example': {'two@y.example'},
+        SubsKind.communities: {
+          a: {'one@x.example', 'two@y.example'},
+          b: {'two@y.example'},
+        },
+        SubsKind.userBlocks: {
+          a: {'bob@z.example'},
+        },
       },
     );
     await c.load();
-    await c.fetchAccounts(['a@x.example', 'b@y.example']);
+    await c.fetchAccounts([a, b]);
     expect(c.running, isFalse);
-    expect(c.snapshots['a@x.example']!.subs, hasLength(2));
-    expect(c.merged, {'one@x.example', 'two@y.example'});
+    expect(c.snapshots[SubsKind.communities]![a]!.subs, hasLength(2));
+    expect(c.merged(SubsKind.communities), {'one@x.example', 'two@y.example'});
+    expect(c.merged(SubsKind.userBlocks), {'bob@z.example'});
+    expect(c.merged(SubsKind.communityBlocks), isEmpty);
 
     final again = _make(store);
     await again.load();
-    expect(again.snapshots['b@y.example']!.subs, {'two@y.example'});
+    expect(again.snapshots[SubsKind.communities]![b]!.subs, {'two@y.example'});
+    expect(again.snapshots[SubsKind.userBlocks]![a]!.subs, {'bob@z.example'});
   });
 
-  test('one failing account keeps its old snapshot and is reported', () async {
-    final store = _MemStore();
-    final c = _make(
-      store,
-      server: {
-        'a@x.example': {'one@x.example'},
-      },
-    );
-    await c.load();
-    await c.fetchAccounts(['a@x.example']);
-    final bad = _make(store, failing: {'a@x.example'});
-    await bad.load();
-    await bad.fetchAccounts(['a@x.example']);
-    expect(bad.failures, ['a@x.example']);
-    expect(bad.steps['a@x.example'], JobStep.failed);
-    expect(bad.snapshots['a@x.example']!.subs, {'one@x.example'});
-  });
+  test(
+    'a failing list keeps its old snapshot and the rest still load',
+    () async {
+      final store = _MemStore();
+      final first = _make(
+        store,
+        server: {
+          SubsKind.communities: {
+            a: {'one@x.example'},
+          },
+        },
+      );
+      await first.load();
+      await first.fetchAccounts([a]);
 
-  test('cancel discards what the cancelled account fetched', () async {
+      final bad = _make(
+        store,
+        server: {
+          SubsKind.userBlocks: {
+            a: {'bob@z.example'},
+          },
+        },
+        failing: {(a, SubsKind.communities)},
+      );
+      await bad.load();
+      await bad.fetchAccounts([a]);
+      expect(bad.failures, ['$a: communities']);
+      expect(bad.steps[a], JobStep.failed);
+      expect(bad.snapshots[SubsKind.communities]![a]!.subs, {'one@x.example'});
+      expect(bad.snapshots[SubsKind.userBlocks]![a]!.subs, {'bob@z.example'});
+    },
+  );
+
+  test('cancel discards what a cancelled account fetched', () async {
     final c = _make(_MemStore());
     await c.load();
-    final run = c.fetchAccounts(['a@x.example']);
+    final run = c.fetchAccounts([a]);
     c.cancel();
     await run;
-    expect(c.steps['a@x.example'], JobStep.cancelled);
-    expect(c.snapshots, isEmpty);
+    expect(c.steps[a], JobStep.cancelled);
+    expect(c.hasData, isFalse);
     expect(c.running, isFalse);
   });
 
-  test('saving the merged list stores the deduplicated union', () async {
-    final store = _MemStore();
+  test('saving the merged lists stores each deduplicated union', () async {
     final c = _make(
-      store,
+      _MemStore(),
       server: {
-        'a@x.example': {'one@x.example'},
-        'b@y.example': {'one@x.example', 'two@y.example'},
+        SubsKind.communities: {
+          a: {'one@x.example'},
+          b: {'one@x.example', 'two@y.example'},
+        },
       },
     );
     await c.load();
-    await c.fetchAccounts(['a@x.example', 'b@y.example']);
-    expect(c.master, isNull);
+    await c.fetchAccounts([a, b]);
+    expect(c.master, isEmpty);
     await c.saveMerged();
-    expect(c.master, {'one@x.example', 'two@y.example'});
-    expect(c.masterUpdated, isNotNull);
+    expect(c.master[SubsKind.communities], {'one@x.example', 'two@y.example'});
+    expect(c.masterUpdated[SubsKind.communities], isNotNull);
   });
 
-  test('subscribing fills only what each account lacks', () async {
+  test('syncing fills only what each account lacks, in that list', () async {
     final applied = <String>[];
     final c = _make(
       _MemStore(),
       server: {
-        'a@x.example': {'one@x.example'},
-        'b@y.example': {'one@x.example', 'two@y.example'},
+        SubsKind.userBlocks: {
+          a: {'bob@z.example'},
+          b: {'bob@z.example', 'eve@z.example'},
+        },
+        SubsKind.communities: {
+          a: {'only-a@x.example'},
+        },
       },
       applied: applied,
     );
     await c.load();
-    await c.fetchAccounts(['a@x.example', 'b@y.example']);
-    await c.subscribeMissing(['a@x.example', 'b@y.example']);
-    expect(applied, ['a@x.example two@y.example true']);
-    expect(c.snapshots['a@x.example']!.subs, contains('two@y.example'));
+    await c.fetchAccounts([a, b]);
+    await c.syncMissing(SubsKind.userBlocks, [a, b]);
+    expect(applied, ['$a userBlocks eve@z.example true']);
+    expect(
+      c.snapshots[SubsKind.userBlocks]![a]!.subs,
+      contains('eve@z.example'),
+    );
+    expect(c.snapshots[SubsKind.communities]![b]!.subs, isEmpty);
     expect(c.failures, isEmpty);
   });
 
   test('a job cannot start while another runs', () async {
     final c = _make(_MemStore());
     await c.load();
-    final first = c.fetchAccounts(['a@x.example']);
-    await c.fetchAccounts(['b@y.example']);
-    expect(c.steps.containsKey('b@y.example'), isFalse);
+    final first = c.fetchAccounts([a]);
+    await c.fetchAccounts([b]);
+    expect(c.steps.containsKey(b), isFalse);
     await first;
   });
 

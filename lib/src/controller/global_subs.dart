@@ -14,6 +14,9 @@ class AccountSnapshot {
 
 enum JobStep { waiting, running, done, failed, cancelled }
 
+/// The lists kept per account.
+enum SubsKind { communities, communityBlocks, userBlocks }
+
 /// Where the cache lives. Replaceable so tests need no disk.
 abstract class SubsStore {
   Future<Map<String, dynamic>?> read();
@@ -47,10 +50,19 @@ class FileSubsStore implements SubsStore {
 /// Fetches an account's subscriptions. Stops and returns null when
 /// [cancelled] turns true.
 typedef SubsFetcher =
-    Future<Set<String>?> Function(String account, bool Function() cancelled);
+    Future<Set<String>?> Function(
+      String account,
+      SubsKind kind,
+      bool Function() cancelled,
+    );
 
 typedef SubsApplier =
-    Future<void> Function(String account, String community, bool state);
+    Future<void> Function(
+      String account,
+      SubsKind kind,
+      String name,
+      bool state,
+    );
 
 /// Keeps every account's subscriptions cached on the device and runs the long
 /// jobs (fetching, subscribing) in the background: the screen only watches.
@@ -65,11 +77,18 @@ class GlobalSubsController extends ChangeNotifier {
   final SubsFetcher fetch;
   final SubsApplier apply;
 
-  final Map<String, AccountSnapshot> snapshots = {};
+  final Map<SubsKind, Map<String, AccountSnapshot>> snapshots = {
+    for (final k in SubsKind.values) k: {},
+  };
 
-  /// The merged list the user saved, or null before the first save.
-  Set<String>? master;
-  DateTime? masterUpdated;
+  /// The merged lists the user saved, per kind.
+  final Map<SubsKind, Set<String>> master = {};
+  final Map<SubsKind, DateTime> masterUpdated = {};
+
+  /// Accounts with a snapshot of [kind].
+  Iterable<String> fetched(SubsKind kind) => snapshots[kind]!.keys;
+
+  bool get hasData => snapshots.values.any((m) => m.isNotEmpty);
 
   String? _job;
 
@@ -96,50 +115,63 @@ class GlobalSubsController extends ChangeNotifier {
     final data = await store.read();
     try {
       if (data != null) {
-        final accounts = data['accounts'] as Map<String, dynamic>? ?? {};
-        for (final e in accounts.entries) {
-          final v = e.value as Map<String, dynamic>;
-          snapshots[e.key] = AccountSnapshot({
-            ...(v['subs'] as List).cast<String>(),
-          }, DateTime.parse(v['updated'] as String));
+        final kinds = data['kinds'] as Map<String, dynamic>? ?? {};
+        for (final kind in SubsKind.values) {
+          final k = kinds[kind.name] as Map<String, dynamic>?;
+          if (k == null) continue;
+          final accounts = k['accounts'] as Map<String, dynamic>? ?? {};
+          for (final e in accounts.entries) {
+            final v = e.value as Map<String, dynamic>;
+            snapshots[kind]![e.key] = AccountSnapshot({
+              ...(v['subs'] as List).cast<String>(),
+            }, DateTime.parse(v['updated'] as String));
+          }
+          final m = k['master'] as List?;
+          if (m != null) {
+            master[kind] = {...m.cast<String>()};
+            masterUpdated[kind] = DateTime.parse(k['masterUpdated'] as String);
+          }
         }
-        final m = data['master'] as List?;
-        master = m == null ? null : {...m.cast<String>()};
-        final mu = data['masterUpdated'] as String?;
-        masterUpdated = mu == null ? null : DateTime.parse(mu);
       }
     } catch (_) {
-      snapshots.clear();
-      master = null;
-      masterUpdated = null;
+      for (final m in snapshots.values) {
+        m.clear();
+      }
+      master.clear();
+      masterUpdated.clear();
     }
     _loaded = true;
     notifyListeners();
   }
 
   Future<void> _save() => store.write({
-    'version': 1,
-    'master': master?.toList(),
-    'masterUpdated': masterUpdated?.toIso8601String(),
-    'accounts': {
-      for (final e in snapshots.entries)
-        e.key: {
-          'subs': e.value.subs.toList(),
-          'updated': e.value.updated.toIso8601String(),
+    'version': 2,
+    'kinds': {
+      for (final kind in SubsKind.values)
+        kind.name: {
+          'master': master[kind]?.toList(),
+          'masterUpdated': masterUpdated[kind]?.toIso8601String(),
+          'accounts': {
+            for (final e in snapshots[kind]!.entries)
+              e.key: {
+                'subs': e.value.subs.toList(),
+                'updated': e.value.updated.toIso8601String(),
+              },
+          },
         },
     },
   });
 
-  /// What the cache says each of [accounts] is subscribed to.
-  SubscriptionMatrix matrix(Iterable<String> accounts) => SubscriptionMatrix({
-    for (final a in accounts) a: snapshots[a]?.subs ?? <String>{},
-  });
+  /// What the cache says each of [accounts] has in the list [kind].
+  SubscriptionMatrix matrix(SubsKind kind, Iterable<String> accounts) =>
+      SubscriptionMatrix({
+        for (final a in accounts) a: snapshots[kind]![a]?.subs ?? <String>{},
+      });
 
-  /// The deduplicated union of every account's subscriptions.
-  Set<String> get merged {
-    final m = matrix(snapshots.keys);
-    return {...m.communities};
-  }
+  /// The deduplicated union of every account's list [kind].
+  Set<String> merged(SubsKind kind) => {
+    ...matrix(kind, snapshots[kind]!.keys).communities,
+  };
 
   void cancel() {
     if (running) _cancel = true;
@@ -164,27 +196,39 @@ class GlobalSubsController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Fetches the subscriptions of [accounts] from their servers. An account
-  /// that fails or is cancelled keeps its previous snapshot.
-  Future<void> fetchAccounts(List<String> accounts) async {
+  /// Fetches the lists [kinds] of [accounts] from their servers. A list that
+  /// fails or is cancelled keeps its previous snapshot.
+  Future<void> fetchAccounts(
+    List<String> accounts, {
+    List<SubsKind> kinds = SubsKind.values,
+  }) async {
     if (!_begin('fetch', accounts)) return;
     await Future.wait([
       for (final account in accounts)
         () async {
           steps[account] = JobStep.running;
           notifyListeners();
-          try {
-            final subs = await fetch(account, () => _cancel);
-            if (subs == null || _cancel) {
-              steps[account] = JobStep.cancelled;
-            } else {
-              snapshots[account] = AccountSnapshot(subs, DateTime.now());
-              steps[account] = JobStep.done;
+          var failed = false;
+          for (final kind in kinds) {
+            if (_cancel) break;
+            try {
+              final subs = await fetch(account, kind, () => _cancel);
+              if (subs != null && !_cancel) {
+                snapshots[kind]![account] = AccountSnapshot(
+                  subs,
+                  DateTime.now(),
+                );
+              }
+            } catch (_) {
+              failed = true;
+              failures.add('$account: ${kind.name}');
             }
-          } catch (_) {
-            steps[account] = JobStep.failed;
-            failures.add(account);
           }
+          steps[account] = _cancel
+              ? JobStep.cancelled
+              : failed
+              ? JobStep.failed
+              : JobStep.done;
           done++;
           notifyListeners();
         }(),
@@ -193,36 +237,38 @@ class GlobalSubsController extends ChangeNotifier {
     await _end();
   }
 
-  /// Saves the merged list of what the cache holds as the local master list.
+  /// Saves the merged list of each kind the cache holds as the local master.
   Future<void> saveMerged() async {
-    master = merged;
-    masterUpdated = DateTime.now();
+    final now = DateTime.now();
+    for (final kind in SubsKind.values) {
+      if (snapshots[kind]!.isEmpty) continue;
+      master[kind] = merged(kind);
+      masterUpdated[kind] = now;
+    }
     notifyListeners();
     await _save();
   }
 
-  /// Subscribes each account to every community the others have and it lacks,
-  /// judging by the cache. One at a time so a server's rate limit holds.
-  Future<void> subscribeMissing(List<String> accounts) async {
-    final m = matrix(accounts);
+  /// Subscribes (or blocks) each account to everything the others have in the
+  /// list [kind] and it lacks, judging by the cache. One at a time so a
+  /// server's rate limit holds.
+  Future<void> syncMissing(SubsKind kind, List<String> accounts) async {
+    final m = matrix(kind, accounts);
     final todo = [
       for (final a in m.accounts)
         for (final c in m.missing(a)) (a, c),
     ];
-    if (todo.isEmpty || !_begin('subscribe', accounts)) return;
+    if (todo.isEmpty || !_begin('sync', accounts)) return;
     total = todo.length;
-    for (final (account, community) in todo) {
+    for (final (account, name) in todo) {
       if (_cancel) break;
       steps[account] = JobStep.running;
       notifyListeners();
       try {
-        await apply(account, community, true);
-        snapshots[account] = AccountSnapshot({
-          ...?snapshots[account]?.subs,
-          community,
-        }, snapshots[account]?.updated ?? DateTime.now());
+        await apply(account, kind, name, true);
+        _remember(account, kind, name, true);
       } catch (_) {
-        failures.add('$account: $community');
+        failures.add('$account: $name');
       }
       done++;
       notifyListeners();
@@ -234,17 +280,29 @@ class GlobalSubsController extends ChangeNotifier {
     await _end();
   }
 
-  /// Subscribes or unsubscribes one account right away and updates the cache.
-  Future<bool> setOne(String account, String community, bool state) async {
+  void _remember(String account, SubsKind kind, String name, bool state) {
+    final old = snapshots[kind]![account];
+    final subs = {...?old?.subs};
+    state ? subs.add(name) : subs.remove(name);
+    snapshots[kind]![account] = AccountSnapshot(
+      subs,
+      old?.updated ?? DateTime.now(),
+    );
+  }
+
+  /// Changes one account's list right away and updates the cache.
+  Future<bool> setOne(
+    String account,
+    SubsKind kind,
+    String name,
+    bool state,
+  ) async {
     try {
-      await apply(account, community, state);
+      await apply(account, kind, name, state);
     } catch (_) {
       return false;
     }
-    final old = snapshots[account];
-    final subs = {...?old?.subs};
-    state ? subs.add(community) : subs.remove(community);
-    snapshots[account] = AccountSnapshot(subs, old?.updated ?? DateTime.now());
+    _remember(account, kind, name, state);
     notifyListeners();
     await _save();
     return true;

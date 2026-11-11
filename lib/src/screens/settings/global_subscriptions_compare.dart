@@ -1,6 +1,7 @@
 import 'package:auto_route/annotations.dart';
 import 'package:flutter/material.dart';
 import 'package:interstellar/src/controller/controller.dart';
+import 'package:interstellar/src/controller/global_subs.dart';
 import 'package:interstellar/src/screens/settings/global_subscriptions.dart';
 import 'package:interstellar/src/utils/utils.dart';
 import 'package:provider/provider.dart';
@@ -18,6 +19,7 @@ class GlobalSubscriptionsCompareScreen extends StatefulWidget {
 class _GlobalSubscriptionsCompareScreenState
     extends State<GlobalSubscriptionsCompareScreen> {
   final Set<String> _busy = {};
+  SubsKind _kind = SubsKind.communities;
 
   String _cell(String account, String community) => '$account\n$community';
 
@@ -25,13 +27,13 @@ class _GlobalSubscriptionsCompareScreenState
     final subs = globalSubsFor(context.read<AppController>());
     final key = _cell(account, community);
     setState(() => _busy.add(key));
-    await subs.setOne(account, community, value);
+    await subs.setOne(account, _kind, community, value);
     if (mounted) setState(() => _busy.remove(key));
   }
 
   Future<void> _syncAll(List<String> accounts) async {
     final subs = globalSubsFor(context.read<AppController>());
-    final m = subs.matrix(accounts);
+    final m = subs.matrix(_kind, accounts);
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -51,7 +53,7 @@ class _GlobalSubscriptionsCompareScreenState
     );
     if (ok != true) return;
     // Runs in the background; progress shows here and on the status screen.
-    subs.subscribeMissing(accounts);
+    subs.syncMissing(_kind, accounts);
   }
 
   @override
@@ -60,13 +62,13 @@ class _GlobalSubscriptionsCompareScreenState
     final subs = globalSubsFor(ac);
     final accounts = [
       for (final a in globalSubsAccounts(ac))
-        if (subs.snapshots.containsKey(a)) a,
+        if (subs.snapshots[_kind]!.containsKey(a)) a,
     ];
 
     return ListenableBuilder(
       listenable: subs,
       builder: (context, _) {
-        final matrix = subs.matrix(accounts);
+        final matrix = subs.matrix(_kind, accounts);
         return Scaffold(
           appBar: AppBar(
             title: Text(l(context).globalSubs_compare),
@@ -82,6 +84,24 @@ class _GlobalSubscriptionsCompareScreenState
           ),
           body: ListView(
             children: [
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: SegmentedButton<SubsKind>(
+                  showSelectedIcon: false,
+                  segments: [
+                    for (final kind in SubsKind.values)
+                      ButtonSegment(
+                        value: kind,
+                        label: Text(
+                          globalSubsKindLabel(context, kind),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                  ],
+                  selected: {_kind},
+                  onSelectionChanged: (v) => setState(() => _kind = v.first),
+                ),
+              ),
               if (subs.running) ...[
                 LinearProgressIndicator(
                   value: subs.total == 0 ? null : subs.done / subs.total,
