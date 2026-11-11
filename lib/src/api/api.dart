@@ -1,3 +1,4 @@
+import 'package:http/http.dart' as http;
 import 'package:interstellar/src/api/bookmark.dart';
 import 'package:interstellar/src/api/client.dart';
 import 'package:interstellar/src/api/comments.dart';
@@ -65,11 +66,8 @@ const _mastodonCompatible = {
   'akkoma',
 };
 
-Future<ServerSoftware?> getServerSoftware(String server) async {
-  final response = await appHttpClient.get(
-    Uri.https(server, '/nodeinfo/2.0.json'),
-  );
-
+/// Reads the software name from a nodeinfo document, or null if it is not one.
+ServerSoftware? _softwareFromNodeInfo(http.Response response) {
   try {
     final name =
         ((response.bodyJson['software']! as JsonMap)['name']! as String)
@@ -81,4 +79,47 @@ Future<ServerSoftware?> getServerSoftware(String server) async {
   } catch (_) {
     return null;
   }
+}
+
+/// Detects which software [server] runs. Tries /nodeinfo/2.0.json, then the
+/// document /.well-known/nodeinfo points to: some servers (Catodon) answer
+/// the first path with their web app's HTML.
+Future<ServerSoftware?> getServerSoftware(
+  String server, {
+  http.Client? client,
+}) async {
+  final web = client ?? appHttpClient;
+  try {
+    final direct = _softwareFromNodeInfo(
+      await web.get(Uri.https(server, '/nodeinfo/2.0.json')),
+    );
+    if (direct != null) return direct;
+
+    final discovery = await web.get(Uri.https(server, '/.well-known/nodeinfo'));
+    final links = (discovery.bodyJson['links']! as List).cast<JsonMap>();
+    // Newest schema first.
+    final hrefs =
+        links
+            .where(
+              (l) => (l['rel']! as String).startsWith(
+                'http://nodeinfo.diaspora.software/ns/schema/',
+              ),
+            )
+            .map((l) => l['href']! as String)
+            .toList()
+          ..sort((a, b) => b.compareTo(a));
+    for (final href in hrefs) {
+      // The document is the server's own: a link elsewhere (or over plain
+      // http) would make the app request an address the server chose.
+      final uri = Uri.tryParse(href);
+      if (uri == null || uri.scheme != 'https' || uri.host != server) continue;
+      try {
+        final found = _softwareFromNodeInfo(await web.get(uri));
+        if (found != null) return found;
+      } catch (_) {
+        // Try the next link.
+      }
+    }
+  } catch (_) {}
+  return null;
 }
