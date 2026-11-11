@@ -1,6 +1,10 @@
 import 'package:expandable/expandable.dart';
 import 'package:flutter/foundation.dart' show setEquals;
+import 'dart:math' show min;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollDirection;
+import 'package:visibility_detector/visibility_detector.dart';
 import 'package:interstellar/src/api/api.dart';
 import 'package:interstellar/src/api/feed_source.dart';
 import 'package:interstellar/src/controller/controller.dart';
@@ -11,7 +15,7 @@ import 'package:interstellar/src/screens/feed/cross_account_feed.dart';
 import 'package:interstellar/src/screens/feed/feed_agregator.dart';
 import 'package:interstellar/src/screens/feed/feed_screen.dart'
     show feedSortSelect;
-import 'package:interstellar/src/utils/utils.dart' show parseEnum;
+import 'package:interstellar/src/utils/utils.dart' show l, parseEnum;
 import 'package:interstellar/src/widgets/actions.dart';
 import 'package:interstellar/src/widgets/floating_menu.dart';
 import 'package:interstellar/src/widgets/hide_on_scroll.dart';
@@ -21,24 +25,31 @@ import 'package:interstellar/src/screens/feed/merged_comments.dart';
 import 'package:interstellar/src/screens/feed/post_item.dart';
 import 'package:interstellar/src/screens/feed/post_page.dart';
 import 'package:interstellar/src/widgets/account_avatar.dart';
+import 'package:interstellar/src/widgets/account_switcher.dart';
 import 'package:interstellar/src/widgets/account_scope.dart';
 import 'package:interstellar/src/screens/feed/global_subscriptions.dart';
 import 'package:interstellar/src/screens/feed/feed_accounts.dart';
+import 'package:interstellar/src/screens/feed/post_filter_lists.dart';
 import 'package:interstellar/src/utils/breakpoints.dart';
+import 'package:interstellar/src/utils/debouncer.dart';
 import 'package:interstellar/src/widgets/scaffold.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:provider/provider.dart';
 
 /// Experimental: newest posts from every account in one stream, rendered with
 /// the regular post card (so the usual feed settings apply). Each post is
-/// shown through the account chosen in the account menu; the app's selected
-/// account is never changed.
+/// shown through the "interact as" account (the selected one unless chosen on
+/// a post). The corner button is the account switcher: it picks one account.
 class CombinedFeedScreen extends StatefulWidget {
   const CombinedFeedScreen({
     required this.accounts,
     super.key,
     this.scrollController,
+    this.onSwitched,
   });
+
+  /// Called after the account switcher changed the selected account.
+  final VoidCallback? onSwitched;
 
   /// Which accounts to draw from; shared with the Feed host.
   final FeedAccounts accounts;
@@ -57,6 +68,14 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
   final Map<String, API> _apis = {};
   // Accounts whose API client could not be built, with the reason.
   final Map<String, Object> _apiErrors = {};
+  // Filter lists that flag a post without hiding it, by (type, post id).
+  final Map<(PostType, int), Set<String>> _filterListWarnings = {};
+  // Posts marked read while scrolling: kept in the list until a refresh, so
+  // hiding read posts does not pull rows out from under the reader.
+  final Set<(String, int)> _markedHere = {};
+  final _markDebounce = Debouncer(duration: const Duration(milliseconds: 500));
+  int _lastVisibleIndex = 0;
+  ScrollDirection _scrollDirection = ScrollDirection.idle;
   // Locally changed copies (e.g. after a vote), keyed by (account, post id).
   final Map<(String, int), PostModel> _overrides = {};
   CrossAccountFeed<PostModel>? _feed;
@@ -65,7 +84,9 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
   // The skip notice the user closed: its source and skipped accounts.
   String? _dismissedSkip;
   late FeedSource _filter;
-  late FeedSort _sort;
+  // The sort picked by the user; null follows the view's default setting.
+  FeedSort? _sortPick;
+  late FeedView _view;
   // Set by the filter sheet or the floating menu; null follows the settings.
   bool? _hideReadOverride;
   // Each account's server-side "show read posts" (null when it has none).
@@ -92,7 +113,7 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
     _filter = isAccountSignedIn(ac, ac.selectedAccount)
         ? (profile.feedSourceOrder.firstOrNull ?? FeedSource.all)
         : FeedSource.all;
-    _sort = profile.feedDefaultCombinedSort;
+    _view = profile.feedViewOrder.firstOrNull ?? FeedView.threads;
     _reset().catchError((Object e) {
       if (mounted) setState(() => _setupError = e);
     });
@@ -135,6 +156,8 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
   void _onScroll() {
     // several scroll views can briefly share the shell's controller
     if (!_scroll.hasClients) return;
+    final direction = _scroll.positions.last.userScrollDirection;
+    if (direction != ScrollDirection.idle) _scrollDirection = direction;
     if (_scroll.positions.last.extentAfter < 600) _loadMore();
   }
 
@@ -147,7 +170,7 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
   }
 
   /// Whether [account] can serve [filter]: personal feeds need a sign-in, and
-  /// Some types have no moderated or favorited feed.
+  /// Some types have no moderated feed.
   bool _supports(AppController ac, String account, FeedSource filter) {
     if (!_apis.containsKey(account)) return false;
     final needsSignIn =
@@ -156,14 +179,15 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
         filter == FeedSource.favorited;
     if (needsSignIn && !isAccountSignedIn(ac, account)) return false;
     final personal = _apis[account]?.client.software.hasPersonalFeeds ?? false;
-    return personal ||
-        !(filter == FeedSource.moderated || filter == FeedSource.favorited);
+    // Bookmarks exist on every type, Mastodon included.
+    return personal || filter != FeedSource.moderated;
   }
 
   /// Source, hide-read and per-account choices in one sheet; applied on close.
   Future<void> _openFilters() async {
     final ac = context.read<AppController>();
     var filter = _filter;
+    var view = _view;
     var hideRead = _effectiveHideRead(ac);
     final included = {...widget.accounts.included};
 
@@ -190,6 +214,29 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
                     ),
                 ],
               ),
+              if (_hasMbin(ac)) ...[
+                const SizedBox(height: 8),
+                Text(
+                  l(context).feedView,
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final v in FeedView.match(
+                      values: ac.profile.feedViewOrder,
+                      software: ServerSoftware.mbin.bitFlag,
+                    ))
+                      ChoiceChip(
+                        avatar: Icon(v.icon, size: 18),
+                        label: Text(v.title(context)),
+                        selected: view == v,
+                        onSelected: (_) => setSheet(() => view = v),
+                      ),
+                  ],
+                ),
+              ],
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('Hide read posts'),
@@ -247,13 +294,16 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
 
     if (!mounted) return;
     final sourcesChanged =
-        filter != _filter || !setEquals(included, widget.accounts.included);
+        filter != _filter ||
+        view != _view ||
+        !setEquals(included, widget.accounts.included);
     final hideChanged = hideRead != _effectiveHideRead(ac);
     if (!sourcesChanged && !hideChanged) return;
     setState(() {
       // picking a different source leaves any single-community view
       if (filter != _filter) _community = null;
       _filter = filter;
+      _view = view;
       if (hideChanged) _hideReadOverride = hideRead;
     });
     // Ticking down to just the selected account hands over to the original
@@ -273,22 +323,42 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
   bool _effectiveHideRead(AppController ac) {
     final override = _hideReadOverride;
     if (override != null) return override;
-    final acting = resolveActiveAccount(ac, ac.accounts.keys.toList());
+    final acting = resolveActiveAccount(ac, _ticked(ac));
     final show = acting == null ? null : _accountShowRead[acting];
     // The account setting is worded the other way round: show read = off
     // means hide read.
     return show != null ? !show : ac.profile.feedDefaultHideReadPosts;
   }
 
+  /// The accounts the filter has ticked: the acting account is chosen among
+  /// them, so a feed filtered to one account is not "acting as" another.
+  List<String> _ticked(AppController ac) => [
+    for (final account in ac.accounts.keys)
+      if (widget.accounts.includes(account)) account,
+  ];
+
   /// Items that are shown: read ones are left out when hiding, judged by the
   /// account each post is shown through.
   List<(String, PostModel)> _visible(AppController ac) {
-    if (!_effectiveHideRead(ac)) return _items;
-    final active = resolveActiveAccount(ac, ac.accounts.keys.toList());
+    final hideRead = _effectiveHideRead(ac);
+    final active = resolveActiveAccount(ac, _ticked(ac));
+    _filterListWarnings.clear();
     return _items.where((entry) {
       final copies = _feed?.copiesOf(entry.$1, entry.$2) ?? [entry];
       final (shown, post) = pickCopy(copies, active);
-      return !(_overrides[(shown, post.id)] ?? post).read;
+      final shownPost = _overrides[(shown, post.id)] ?? post;
+      if (hideRead &&
+          shownPost.read &&
+          !_markedHere.contains((shown, shownPost.id))) {
+        return false;
+      }
+      // the same filter lists as the regular feed: hide, or flag with a warning
+      return applyFilterLists(
+        [shownPost],
+        lists: ac.filterLists,
+        active: ac.profile.filterLists,
+        warnings: _filterListWarnings,
+      ).isNotEmpty;
     }).toList();
   }
 
@@ -326,10 +396,118 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
     _ensureFilled();
   }
 
+  FeedSort get _sort => _sortPick ?? _defaultSort(_view);
+
+  /// Each view has its own default sort setting, as in the regular feed.
+  FeedSort _defaultSort(FeedView view) {
+    final profile = context.read<AppController>().profile;
+    return switch (view) {
+      FeedView.threads => profile.feedDefaultThreadsSort,
+      FeedView.microblog => profile.feedDefaultMicroblogSort,
+      FeedView.combined => profile.feedDefaultCombinedSort,
+    };
+  }
+
+  /// Threads, microblog and combined views only exist on Mbin; the other
+  /// types have just their posts, so the choice is offered only when a ticked
+  /// account is on Mbin.
+  bool _hasMbin(AppController ac) => ac.accounts.keys.any(
+    (a) =>
+        widget.accounts.includes(a) &&
+        (_apis[a]?.client.software == ServerSoftware.mbin),
+  );
+
+  /// One page from [api] for the chosen view: Mbin and Mastodon serve
+  /// microblogs; Lemmy and PieFed have none, so they add nothing there.
+  Future<PostListModel> _list(
+    API api,
+    FeedSource source, {
+    String? sourceId,
+    String? page,
+    required FeedView view,
+    required FeedSort sort,
+  }) {
+    final software = api.client.software;
+    if (view == FeedView.microblog) {
+      if (software != ServerSoftware.mbin &&
+          software != ServerSoftware.mastodon) {
+        return Future.value(const PostListModel(items: [], nextPage: null));
+      }
+      return api.microblogs.list(
+        source,
+        sourceId: sourceId,
+        page: page,
+        sort: sort,
+      );
+    }
+    return api.threads.list(
+      source,
+      sourceId: sourceId,
+      page: page,
+      sort: sort,
+      combined: software == ServerSoftware.mbin && view == FeedView.combined,
+      // Always ask for read posts too; hiding is done here, by the effective
+      // setting, so it can change without a refetch.
+      showRead: true,
+    );
+  }
+
+  /// Read state for an account: Lemmy keeps it on the server for a signed-in
+  /// account, everything else (Mbin, Mastodon, guests) in the local database.
+  Future<List<PostModel>> _withReadState(
+    String account,
+    API api,
+    List<PostModel> posts,
+  ) async {
+    final ac = context.read<AppController>();
+    if (api.client.software == ServerSoftware.lemmy &&
+        isAccountSignedIn(ac, account)) {
+      return posts;
+    }
+    return Future.wait(
+      posts.map(
+        (post) async => !post.read && await ac.isRead(post, account: account)
+            ? post.copyWith(read: true)
+            : post,
+      ),
+    );
+  }
+
+  /// Marks every unread post up to [index], as shown, read on the account
+  /// each is shown through.
+  Future<void> _markReadThrough(int index) async {
+    if (!mounted) return;
+    final ac = context.read<AppController>();
+    final active = resolveActiveAccount(ac, _ticked(ac));
+    final visible = _visible(ac);
+    final byAccount = <String, List<PostModel>>{};
+    for (var i = min(index, visible.length - 1); i >= 0; i--) {
+      final copies =
+          _feed?.copiesOf(visible[i].$1, visible[i].$2) ?? [visible[i]];
+      final (shown, post) = pickCopy(copies, active);
+      final current = _overrides[(shown, post.id)] ?? post;
+      if (!current.read) (byAccount[shown] ??= []).add(current);
+    }
+    for (final entry in byAccount.entries) {
+      try {
+        final done = await ac.markAsRead(entry.value, true, account: entry.key);
+        if (!mounted) return;
+        setState(() {
+          for (final post in done) {
+            _overrides[(entry.key, post.id)] = post;
+            _markedHere.add((entry.key, post.id));
+          }
+        });
+      } catch (_) {
+        // read state is best-effort
+      }
+    }
+  }
+
   Future<void> _pickSort() async {
     final picked = await feedSortSelect(context).askSelection(context, _sort);
     if (picked == null || picked == _sort) return;
-    setState(() => _sort = picked);
+    setState(() => _sortPick = picked);
     await _reset();
   }
 
@@ -348,10 +526,12 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
     setState(() {
       _items.clear();
       _overrides.clear();
+      _markedHere.clear();
       _setupError = null;
       final filter = _filter;
       final community = _community;
       final sort = _sort;
+      final view = _view;
       final order = postSortFunction(ServerSoftware.lemmy, sort);
       // Plain statements, not a collection literal: nested if/else inside a
       // for-loop attaches the else to the wrong if.
@@ -365,17 +545,18 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
               account: entry.key,
               fetch: (page) async {
                 final api = _apis[entry.key]!;
-                final result = await api.threads.list(
+                final result = await _list(
+                  api,
                   FeedSource.community,
                   sourceId: entry.value.id.toString(),
                   page: page.isEmpty ? null : page,
+                  view: view,
                   sort: sort,
-                  combined: api.client.software == ServerSoftware.mbin,
-                  // Always ask for read posts too; hiding is done here, by
-                  // the effective setting, so it can change without a refetch.
-                  showRead: true,
                 );
-                return (items: result.items, next: result.nextPage);
+                return (
+                  items: await _withReadState(entry.key, api, result.items),
+                  next: result.nextPage,
+                );
               },
             ),
           );
@@ -391,15 +572,17 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
               account: account,
               fetch: (page) async {
                 final api = _apis[account]!;
-                final mbin = api.client.software == ServerSoftware.mbin;
-                final result = await api.threads.list(
+                final result = await _list(
+                  api,
                   filter,
                   page: page.isEmpty ? null : page,
+                  view: view,
                   sort: sort,
-                  combined: mbin,
-                  showRead: true,
                 );
-                return (items: result.items, next: result.nextPage);
+                return (
+                  items: await _withReadState(account, api, result.items),
+                  next: result.nextPage,
+                );
               },
             ),
           );
@@ -610,6 +793,12 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
           ),
           subtitle: Row(
             children: [
+              if (_hasMbin(ac)) ...[
+                Icon(_view.icon, size: 20),
+                const SizedBox(width: 2),
+                Text(_view.title(context)),
+                const SizedBox(width: 8),
+              ],
               Icon(_sort.icon, size: 20),
               const SizedBox(width: 2),
               Text(_sort.title(context)),
@@ -627,7 +816,7 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
             ),
           Padding(
             padding: const EdgeInsets.only(right: 4),
-            child: AccountMenuButton(accounts: ac.accounts.keys.toList()),
+            child: AccountSwitcher(onSwitched: widget.onSwitched),
           ),
         ],
       ),
@@ -744,7 +933,7 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
               final (account, post) = visible[i];
               // keyed, so a banner appearing or going away does not hand one
               // post's state (e.g. a translation) to another row
-              return ValueListenableBuilder<String?>(
+              final row = ValueListenableBuilder<String?>(
                 key: ValueKey((account, post.id)),
                 valueListenable: interactAccount,
                 builder: (context, _, _) {
@@ -753,10 +942,7 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
                       _feed?.copiesOf(account, post) ?? [(account, post)];
                   // Actions go through the global account's copy when it has
                   // one; otherwise through the first copy, which the card says.
-                  final acting = resolveActiveAccount(
-                    ac,
-                    ac.accounts.keys.toList(),
-                  );
+                  final acting = resolveActiveAccount(ac, _ticked(ac));
                   final (shown, shownPost) = pickCopy(copies, acting);
                   final actingMissing = acting != null && acting != shown;
                   final api = _apis[shown];
@@ -788,6 +974,20 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
                           onTap: () => _open(account, post),
                           isPreview: true,
                           isTopLevel: true,
+                          onReply: isAccountSignedIn(ac, shown)
+                              ? (body, lang, {image, alt}) async {
+                                  await api.comments.create(
+                                    shownPost.type,
+                                    shownPost.id,
+                                    body,
+                                    lang: lang,
+                                    image: image,
+                                    alt: alt,
+                                  );
+                                }
+                              : null,
+                          filterListWarnings:
+                              _filterListWarnings[(display.type, display.id)],
                         ),
                         // Which of your accounts have this post.
                         Padding(
@@ -819,6 +1019,25 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
                     ),
                   );
                 },
+              );
+              final profile = context.read<AppController>().profile;
+              final markOnScroll =
+                  (profile.markThreadsReadOnScroll &&
+                      _view == FeedView.threads) ||
+                  (profile.markMicroblogsReadOnScroll &&
+                      _view == FeedView.microblog);
+              if (!markOnScroll) return row;
+              return VisibilityDetector(
+                key: ValueKey(('visible', account, post.id)),
+                onVisibilityChanged: (info) {
+                  if (i <= _lastVisibleIndex &&
+                      info.visibleFraction == 0 &&
+                      _scrollDirection == ScrollDirection.reverse) {
+                    _markDebounce.run(() => _markReadThrough(i));
+                  }
+                  if (info.visibleFraction == 1) _lastVisibleIndex = i;
+                },
+                child: row,
               );
             },
           ),

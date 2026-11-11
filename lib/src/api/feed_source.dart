@@ -44,7 +44,9 @@ enum FeedSource {
   local(icon: Symbols.home_pin_rounded),
   subscribed(icon: Symbols.group_rounded),
   moderated(icon: Symbols.lock_rounded),
-  favorited(icon: Symbols.favorite_rounded),
+  // Named for what it once was; it lists bookmarks now, and the name is stored
+  // in saved profiles.
+  favorited(icon: Symbols.bookmark_rounded),
   community,
   user,
   domain,

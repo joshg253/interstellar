@@ -1,5 +1,6 @@
 import 'package:collection/collection.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:interstellar/src/api/bookmark.dart';
 import 'package:interstellar/src/api/client.dart';
 import 'package:interstellar/src/api/feed_source.dart';
 import 'package:interstellar/src/api/mastodon.dart';
@@ -63,6 +64,14 @@ class APIThreads {
     bool includeBoosts = false,
     bool? showRead,
   }) async {
+    // "Favorited" shows bookmarks on every type, not the items you upvoted.
+    if (source == FeedSource.favorited) {
+      return APIBookmark(client).feedPage(
+        page: page,
+        sort: sort,
+        type: combined ? null : PostType.thread,
+      );
+    }
     switch (client.software) {
       case ServerSoftware.mastodon:
         return MastodonAPI(client).timeline(source, page: page);
