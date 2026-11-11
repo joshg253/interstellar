@@ -18,8 +18,15 @@ class HashtagMarkdownSyntax extends md.InlineSyntax {
     - Don't match if there are only digits after the #.
     - Ensure the match ends at the end of the whole set of word characters.
     - Ensure there is not a # immediately following the match.
+
+    Dart's \w, \b and \B know only ASCII, and the markdown package builds the
+    pattern without the unicode flag (so no \p{L}); accented letters, which
+    include combining marks, and other scripts are listed as ranges instead.
    */
-  static const String _tagPattern = r'(?<!#)\B#(?!\d+\b)(\w+)\b(?!#)';
+  static const String _word =
+      r'\w\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u1FFF\u3040-\uD7FF';
+  static const String _tagPattern =
+      '(?<![#$_word])#(?!\\d+(?![$_word]))([$_word]+)(?![$_word#])';
 
   @override
   bool onMatch(md.InlineParser parser, Match match) {
