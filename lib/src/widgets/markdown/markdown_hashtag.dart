@@ -7,11 +7,14 @@ import 'package:interstellar/src/screens/feed/feed_agregator.dart';
 import 'package:markdown/markdown.dart' as md;
 
 class HashtagMarkdownSyntax extends md.InlineSyntax {
-  HashtagMarkdownSyntax() : super(_tagPattern);
+  // The base class compiles its pattern without the unicode flag, so [pattern]
+  // is overridden with one that has it; '#' only serves as the cheap first
+  // check.
+  HashtagMarkdownSyntax() : super('#', startCharacter: 0x23);
 
   /*
     This expression checks the following:
-    
+
     - Ensure there is no more than one # at the start.
     - Ensure there is not a word character preceding the match.
     - Match only word characters after the #.
@@ -19,14 +22,19 @@ class HashtagMarkdownSyntax extends md.InlineSyntax {
     - Ensure the match ends at the end of the whole set of word characters.
     - Ensure there is not a # immediately following the match.
 
-    Dart's \w, \b and \B know only ASCII, and the markdown package builds the
-    pattern without the unicode flag (so no \p{L}); accented letters, which
-    include combining marks, and other scripts are listed as ranges instead.
+    Dart's \w, \b and \B know only ASCII, so a word character is a letter, a
+    combining mark, a decimal digit of any script, or an underscore.
    */
-  static const String _word =
-      r'\w\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u1FFF\u3040-\uD7FF';
-  static const String _tagPattern =
-      '(?<![#$_word])#(?!\\d+(?![$_word]))([$_word]+)(?![$_word#])';
+  static const String _digit = r'\p{Nd}';
+  static const String _word = r'\p{L}\p{M}\p{Nd}_';
+  static final RegExp _tag = RegExp(
+    '(?<![#$_word])#(?!$_digit+(?![$_word]))([$_word]+)(?![$_word#])',
+    multiLine: true,
+    unicode: true,
+  );
+
+  @override
+  RegExp get pattern => _tag;
 
   @override
   bool onMatch(md.InlineParser parser, Match match) {

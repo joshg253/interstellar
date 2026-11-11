@@ -109,8 +109,16 @@ Future<ServerSoftware?> getServerSoftware(
             .toList()
           ..sort((a, b) => b.compareTo(a));
     for (final href in hrefs) {
-      final found = _softwareFromNodeInfo(await web.get(Uri.parse(href)));
-      if (found != null) return found;
+      // The document is the server's own: a link elsewhere (or over plain
+      // http) would make the app request an address the server chose.
+      final uri = Uri.tryParse(href);
+      if (uri == null || uri.scheme != 'https' || uri.host != server) continue;
+      try {
+        final found = _softwareFromNodeInfo(await web.get(uri));
+        if (found != null) return found;
+      } catch (_) {
+        // Try the next link.
+      }
     }
   } catch (_) {}
   return null;

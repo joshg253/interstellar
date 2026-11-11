@@ -33,4 +33,23 @@ void main() {
     expect(_html('##tag'), isNot(contains('<tag>')));
     expect(_html('#tag#'), isNot(contains('<tag>')));
   });
+
+  test('a decomposed accent is part of the tag', () {
+    const tag = '#Bär';
+    expect(_html(tag), contains('<tag>$tag</tag>'));
+  });
+
+  test('punctuation of other scripts ends a tag', () {
+    expect(_html('#tag، more'), contains('<tag>#tag</tag>'));
+    expect(_html('#tag。'), contains('<tag>#tag</tag>'));
+  });
+
+  test('letters outside the basic plane are part of a tag', () {
+    const tag = '#\u{10400}\u{10401}';
+    expect(_html(tag), contains('<tag>$tag</tag>'));
+  });
+
+  test('a tag of only non-ASCII digits is not a tag', () {
+    expect(_html('#١٢٣'), isNot(contains('<tag>')));
+  });
 }
