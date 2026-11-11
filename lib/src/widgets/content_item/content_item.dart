@@ -15,7 +15,9 @@ import 'package:interstellar/src/models/notification.dart';
 import 'package:interstellar/src/models/poll.dart';
 import 'package:interstellar/src/models/post.dart';
 import 'package:interstellar/src/models/user.dart';
+import 'package:interstellar/src/utils/globals.dart';
 import 'package:interstellar/src/utils/language.dart';
+import 'package:interstellar/src/utils/linked_video.dart';
 import 'package:interstellar/src/utils/utils.dart';
 import 'package:interstellar/src/utils/video_url.dart';
 import 'package:interstellar/src/widgets/account_scope.dart';
@@ -67,6 +69,8 @@ class ContentItem extends StatefulWidget {
     this.title,
     this.image,
     this.link,
+    this.embeddedVideo,
+    this.gallery = const [],
     this.body,
     this.translation,
     this.lang,
@@ -135,6 +139,12 @@ class ContentItem extends StatefulWidget {
   final String? title;
   final ImageModel? image;
   final Uri? link;
+
+  /// A video the server found behind [link] (Lemmy and PieFed).
+  final Uri? embeddedVideo;
+
+  /// The pictures of a gallery post; a list shows the first with a count.
+  final List<String> gallery;
   final String? body;
   final Translation? translation;
   final String? lang;
@@ -231,6 +241,8 @@ class _ContentItemState extends State<ContentItem> {
   bool _isReplying = false;
   // In a list a video shows its thumbnail until it is tapped.
   bool _playInList = false;
+  // The video of a Mastodon status that the link points to, once looked up.
+  Uri? _statusVideo;
   TextEditingController? _editTextController;
 
   List<Tag> _userTags = [];
@@ -239,12 +251,27 @@ class _ContentItemState extends State<ContentItem> {
   void didUpdateWidget(ContentItem oldWidget) {
     super.didUpdateWidget(oldWidget);
     // A list can hand this state to another post.
-    if (oldWidget.link != widget.link) _playInList = false;
+    if (oldWidget.link != widget.link) {
+      _playInList = false;
+      _statusVideo = null;
+      _lookUpStatusVideo();
+    }
+  }
+
+  void _lookUpStatusVideo() {
+    final link = widget.link;
+    if (link == null || widget.embeddedVideo != null) return;
+    linkedVideo(link, appHttpClient).then((video) {
+      if (mounted && widget.link == link && video != null) {
+        setState(() => _statusVideo = video);
+      }
+    });
   }
 
   @override
   void initState() {
     super.initState();
+    _lookUpStatusVideo();
     if (widget.user != null) {
       context.read<AppController>().getUserTags(widget.user!.name).then((tags) {
         if (!mounted) return;
@@ -328,10 +355,10 @@ class _ContentItemState extends State<ContentItem> {
 
     final link = widget.link;
     final videoUri = link == null
-        ? null
+        ? widget.embeddedVideo
         : isSupportedYouTubeVideo(link)
         ? link
-        : playableVideoUrl(link);
+        : playableVideoUrl(link) ?? widget.embeddedVideo ?? _statusVideo;
     final isVideo = videoUri != null;
 
     final menuWidget = IconButton(
@@ -461,7 +488,15 @@ class _ContentItemState extends State<ContentItem> {
               components.add(switch (component) {
                 PostComponent.title => contentTitle(context, menuWidget),
                 PostComponent.image =>
-                  video ?? (image == null || isThumbnail ? null : image),
+                  video ??
+                      (widget.gallery.length > 1 && !widget.isPreview
+                          ? _galleryPictures(context)
+                          : null) ??
+                      (image == null || isThumbnail
+                          ? null
+                          : widget.gallery.length > 1
+                          ? _withCount(image, widget.gallery.length)
+                          : image),
                 PostComponent.info => ContentInfo(
                   user: widget.user,
                   isOp: widget.opUserId == widget.user?.id,
@@ -766,6 +801,47 @@ class _ContentItemState extends State<ContentItem> {
         ? Text(widget.body!, maxLines: 4, overflow: TextOverflow.ellipsis)
         : Markdown(widget.body!, widget.originInstance, nsfw: isNSFW);
   }
+
+  Widget _galleryPictures(BuildContext context) {
+    final enableBlur =
+        widget.isNSFW &&
+        context.watch<AppController>().profile.coverMediaMarkedSensitive;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      spacing: 8,
+      children: [
+        for (final src in widget.gallery)
+          AdvancedImage(
+            ImageModel(
+              src: src,
+              altText: null,
+              blurHash: null,
+              blurHashWidth: null,
+              blurHashHeight: null,
+            ),
+            openTitle: widget.title ?? '',
+            fit: BoxFit.fitWidth,
+            enableBlur: enableBlur,
+            hero: AdvancedImage.getHeroTag(),
+          ),
+      ],
+    );
+  }
+
+  Widget _withCount(Widget image, int count) => Stack(
+    alignment: Alignment.bottomRight,
+    children: [
+      image,
+      Padding(
+        padding: const EdgeInsets.all(8),
+        child: Chip(
+          avatar: const Icon(Symbols.photo_library_rounded, size: 16),
+          label: Text('$count'),
+          visualDensity: VisualDensity.compact,
+        ),
+      ),
+    ],
+  );
 
   Widget? getImage(
     BuildContext context, {

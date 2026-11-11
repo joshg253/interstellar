@@ -19,3 +19,11 @@ Uri? playableVideoUrl(Uri link) {
   }
   return null;
 }
+
+/// The video file a server reports for a link (Lemmy's and PieFed's embedded
+/// video), or null if it is something a player cannot open: a PeerTube embed
+/// is a web page, not a video.
+Uri? embeddedVideoFile(String? url) {
+  final uri = Uri.tryParse(url ?? '');
+  return uri == null ? null : playableVideoUrl(uri);
+}
