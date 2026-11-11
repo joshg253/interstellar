@@ -735,6 +735,36 @@
   },
   "globalSubs_loadFailed": "Could not load this account's subscriptions",
   "globalSubs_empty": "No subscriptions found.",
+  "globalSubs_saved": "Saved list: {count} communities, updated {when}",
+  "@globalSubs_saved": {
+    "placeholders": {
+      "count": { "type": "int" },
+      "when": { "type": "String" }
+    }
+  },
+  "globalSubs_notSaved": "No saved list yet",
+  "globalSubs_accountInfo": "{count} subscriptions, fetched {when}",
+  "@globalSubs_accountInfo": {
+    "placeholders": {
+      "count": { "type": "int" },
+      "when": { "type": "String" }
+    }
+  },
+  "globalSubs_notFetched": "Not fetched yet",
+  "globalSubs_fetch": "Fetch from servers",
+  "globalSubs_fetch_help": "Asks each checked account for its subscriptions and keeps them on this device",
+  "globalSubs_saveMerged": "Save merged list",
+  "globalSubs_saveMerged_help": "Keeps every fetched subscription once, as one list on this device",
+  "globalSubs_compare": "Compare and sync accounts",
+  "globalSubs_compare_help": "Uses the fetched data: no waiting on servers",
+  "globalSubs_running": "Working: {done} of {total}",
+  "@globalSubs_running": {
+    "placeholders": {
+      "done": { "type": "int" },
+      "total": { "type": "int" }
+    }
+  },
+  "globalSubs_runningHint": "You can leave this screen. The job keeps running.",
   "settings_accountMigration": "Account migration",
   "settings_accountMigration_help": "Migrate subscriptions, follows, and blocks between accounts",
   "settings_accountMigration_step1": "Select source and destination accounts",
