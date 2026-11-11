@@ -97,31 +97,3 @@ Future<void> showAccountsSheet(
 
   accounts.set(included);
 }
-
-/// The Feed's account button: the account in use, which opens the sheet.
-class FeedAccountsButton extends StatelessWidget {
-  const FeedAccountsButton({required this.accounts, super.key});
-
-  final FeedAccounts accounts;
-
-  @override
-  Widget build(BuildContext context) {
-    final ac = context.watch<AppController>();
-    final account = ac.selectedAccount;
-    return Padding(
-      padding: const EdgeInsets.only(right: 4),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: () => showAccountsSheet(context, accounts),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            spacing: 6,
-            children: [AccountAvatar(account), Text(account.split('@').last)],
-          ),
-        ),
-      ),
-    );
-  }
-}

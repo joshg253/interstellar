@@ -3,12 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:interstellar/src/controller/controller.dart';
 import 'package:interstellar/src/screens/feed/cross_account_feed_screen.dart';
 import 'package:interstellar/src/screens/feed/feed_accounts.dart';
-import 'package:interstellar/src/screens/feed/feed_screen.dart';
+import 'package:interstellar/src/widgets/account_scope.dart'
+    show interactAccount;
 import 'package:provider/provider.dart';
 
-/// The Feed tab. With exactly the app's selected account ticked it is the
-/// original [FeedScreen], unchanged; with several accounts ticked it is the
-/// merged view, which overrides only what multiple accounts need.
+/// The Feed tab: always the merged view, whether one account or several are
+/// ticked. Sources and accounts are both chosen in its filter sheet.
 @RoutePage()
 class FeedHomeScreen extends StatefulWidget {
   const FeedHomeScreen({
@@ -31,7 +31,6 @@ class FeedHomeScreen extends StatefulWidget {
 class _FeedHomeScreenState extends State<FeedHomeScreen> {
   late final FeedAccounts _accounts;
   String? _selectedSeen;
-  bool _switching = false;
 
   @override
   void initState() {
@@ -53,21 +52,23 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
     super.dispose();
   }
 
-  bool _selectable(AppController ac, String account) =>
-      ac.servers[account.split('@').last]?.software.canBeAppAccount ?? true;
+  /// The account switcher picks one account: the feed shows just that one,
+  /// and you act as it (an earlier "interact as" pick is dropped).
+  void _showOnlySelected() {
+    if (!mounted) return;
+    interactAccount.value = null;
+    _accounts.set({context.read<AppController>().selectedAccount});
+  }
 
   @override
   Widget build(BuildContext context) {
     final ac = context.watch<AppController>();
 
     // The selected account changed from elsewhere (e.g. the inbox switcher):
-    // the feed follows it, as the original Feed always has, unless it was
-    // already ticked, in which case the ticked set is kept.
-    var followed = false;
+    // the feed follows it, unless it was already ticked, in which case the
+    // ticked set is kept.
     if (_selectedSeen != ac.selectedAccount) {
       _selectedSeen = ac.selectedAccount;
-      _switching = false;
-      followed = !_accounts.includes(ac.selectedAccount);
       if (!_accounts.includes(ac.selectedAccount)) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) _accounts.set({ac.selectedAccount});
@@ -75,30 +76,11 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       }
     }
 
-    final single = _accounts.single(ac);
-
-    if (single != null && single == ac.selectedAccount) {
-      return FeedScreen(
-        key: const ValueKey('feed'),
-        feedName: 'home',
-        scrollController: widget.scrollController,
-        accountsAction: FeedAccountsButton(accounts: _accounts),
-      );
-    }
-
-    // One account ticked that is not the selected one: make it the selected
-    // account, so the original Feed runs on it exactly as it would anyway.
-    if (single != null && !followed && !_switching && _selectable(ac, single)) {
-      _switching = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) ac.switchAccounts(single);
-      });
-    }
-
     return CombinedFeedScreen(
       key: const ValueKey('combined'),
       accounts: _accounts,
       scrollController: widget.scrollController,
+      onSwitched: _showOnlySelected,
     );
   }
 }

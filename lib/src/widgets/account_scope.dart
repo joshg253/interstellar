@@ -86,34 +86,24 @@ extension ScopedTarget on BuildContext {
 }
 
 extension ScopedReadStatus on BuildContext {
-  /// Marks posts read on the selected account. Inside an [AccountScope] the
-  /// write is skipped (read status is keyed by the selected account, so it
-  /// would hit the wrong server); the returned posts still carry the flag.
+  /// Marks posts read on the selected account, or on the account of the
+  /// enclosing [AccountScope], whose copy of the post is shown.
   Future<List<PostModel>> markPostsRead(
     List<PostModel> posts,
     bool markRead,
   ) async {
     final scope = AccountScope.maybeOf(this);
     if (scope != null) {
-      // Lemmy and PieFed keep read state on the server, so mark it on the
-      // account the post belongs to. Others have no scoped read state yet.
-      final ac = read<AppController>();
-      final account = ac.accounts[scope.account];
-      final signedIn =
-          account != null && (account.jwt != null || account.oauth != null);
-      final software = scope.api.client.software;
-      if (signedIn &&
-          (software == ServerSoftware.lemmy ||
-              software == ServerSoftware.piefed)) {
-        try {
-          await scope.api.threads.markAsRead([
-            for (final post in posts) post.id,
-          ], markRead);
-        } catch (_) {
-          // read state is best-effort
-        }
+      try {
+        return await read<AppController>().markAsRead(
+          posts,
+          markRead,
+          account: scope.account,
+        );
+      } catch (_) {
+        // read state is best-effort; the returned posts still carry the flag
+        return posts.map((post) => post.copyWith(read: markRead)).toList();
       }
-      return posts.map((post) => post.copyWith(read: markRead)).toList();
     }
     return read<AppController>().markAsRead(posts, markRead);
   }

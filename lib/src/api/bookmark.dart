@@ -1,4 +1,5 @@
 import 'package:interstellar/src/api/client.dart';
+import 'package:interstellar/src/api/feed_source.dart';
 import 'package:interstellar/src/api/mastodon.dart';
 import 'package:interstellar/src/controller/server.dart';
 import 'package:interstellar/src/models/bookmark_list.dart';
@@ -109,6 +110,35 @@ class APIBookmark {
     } on Object {
       return item;
     }
+  }
+
+  /// The bookmarked threads and posts as one feed page, for the Bookmarks feed
+  /// source; comments are left out. Only Mbin has both kinds, so [type] narrows
+  /// the page there and is ignored elsewhere. [sort] is the feed's; Mbin orders
+  /// bookmarks by newest, oldest, top or hot (anything else is newest), and
+  /// the other types have no sort.
+  Future<PostListModel> feedPage({
+    String? page,
+    PostType? type,
+    FeedSort? sort,
+  }) async {
+    final (items, next) = await list(
+      page: page,
+      sort: switch (mbinGetSort(sort)) {
+        FeedSort.oldest => 'oldest',
+        FeedSort.top => 'top',
+        FeedSort.hot => 'hot',
+        _ => 'newest',
+      },
+    );
+    final only = client.software == ServerSoftware.mbin ? type : null;
+    return PostListModel(
+      items: [
+        for (final item in items)
+          if (item is PostModel && (only == null || item.type == only)) item,
+      ],
+      nextPage: next,
+    );
   }
 
   /// With [ownVotes] false, Mbin items come back without the user's vote (see

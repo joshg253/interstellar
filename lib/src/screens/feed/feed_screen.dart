@@ -16,6 +16,7 @@ import 'package:interstellar/src/models/feed.dart';
 import 'package:interstellar/src/models/post.dart';
 import 'package:interstellar/src/screens/feed/feed_agregator.dart';
 import 'package:interstellar/src/screens/feed/nav_drawer.dart';
+import 'package:interstellar/src/screens/feed/post_filter_lists.dart';
 import 'package:interstellar/src/screens/feed/post_item.dart';
 import 'package:interstellar/src/screens/feed/post_page.dart';
 import 'package:interstellar/src/utils/breakpoints.dart';
@@ -902,34 +903,12 @@ class _FeedScreenBodyState extends State<FeedScreenBody>
     final newItems = page.$1;
     final nextPageKey = page.$2;
 
-    final filterListActivations = ac.profile.filterLists;
-    final items = newItems.where((post) {
-      // Skip feed filters if it's an explore page
-      // if (widget.sourceId != null) return true;
-
-      for (final filterListEntry in ac.filterLists.entries) {
-        if (filterListActivations[filterListEntry.key] ?? false) {
-          final filterList = filterListEntry.value;
-
-          if ((post.title != null && filterList.hasMatch(post.title!)) ||
-              (post.body != null && filterList.hasMatch(post.body!))) {
-            if (filterList.showWithWarning) {
-              if (!_filterListWarnings.containsKey((post.type, post.id))) {
-                _filterListWarnings[(post.type, post.id)] = {};
-              }
-
-              _filterListWarnings[(post.type, post.id)]!.add(
-                filterListEntry.key,
-              );
-            } else {
-              return false;
-            }
-          }
-        }
-      }
-
-      return true;
-    }).toList();
+    final items = applyFilterLists(
+      newItems,
+      lists: ac.filterLists,
+      active: ac.profile.filterLists,
+      warnings: _filterListWarnings,
+    );
 
     return (
       items.where((item) => !(widget.hideReadPosts && item.read)).toList(),

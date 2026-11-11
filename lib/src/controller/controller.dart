@@ -1068,22 +1068,40 @@ class AppController with ChangeNotifier {
     }
   }
 
-  Future<List<PostModel>> markAsRead(List<PostModel> posts, bool read) async {
+  /// Marks [posts] read or unread for [account] (default: the selected one).
+  /// Lemmy and PieFed keep this on the server for a signed-in account; Mbin,
+  /// Mastodon and guests keep it in the local database, keyed by the account.
+  Future<List<PostModel>> markAsRead(
+    List<PostModel> posts,
+    bool read, {
+    String? account,
+  }) async {
+    final who = account ?? _selectedAccount;
+    final software = _servers[who.split('@').last]?.software ?? serverSoftware;
+    final signedIn = account == null
+        ? isLoggedIn
+        : (_accounts[who]?.jwt != null || _accounts[who]?.oauth != null);
     // Use Lemmy's and PieFed's read API when available
-    if (isLoggedIn && serverSoftware != ServerSoftware.mbin) {
-      await api.threads.markAsRead(posts.map((post) => post.id).toList(), read);
+    if (signedIn &&
+        (software == ServerSoftware.lemmy ||
+            software == ServerSoftware.piefed)) {
+      final target = account == null ? api : await getApiForAccount(who);
+      await target.threads.markAsRead(
+        posts.map((post) => post.id).toList(),
+        read,
+      );
     }
     // Use local database otherwise.
     // If marking as read, then check for a db row first, and add one if not present.
     else if (read) {
       await database.transaction(() async {
         for (final post in posts) {
-          if (!await isRead(post)) {
+          if (!await isRead(post, account: who)) {
             await database
                 .into(database.readPostCache)
                 .insertOnConflictUpdate(
                   ReadPostCacheCompanion.insert(
-                    account: _selectedAccount,
+                    account: who,
                     postType: post.type,
                     postId: post.id,
                   ),
@@ -1098,7 +1116,7 @@ class AppController with ChangeNotifier {
         for (final post in posts) {
           await (database.delete(database.readPostCache)..where(
                 (f) =>
-                    f.account.equals(_selectedAccount) &
+                    f.account.equals(who) &
                     f.postType.equals(post.type.name) &
                     f.postId.equals(post.id),
               ))
@@ -1110,10 +1128,12 @@ class AppController with ChangeNotifier {
     return posts.map((post) => post.copyWith(read: read)).toList();
   }
 
-  Future<bool> isRead(PostModel post) async {
+  /// The local read state; for [account] (default: the selected one).
+  Future<bool> isRead(PostModel post, {String? account}) async {
+    final who = account ?? _selectedAccount;
     return (await (database.select(database.readPostCache)..where(
                   (f) =>
-                      f.account.equals(_selectedAccount) &
+                      f.account.equals(who) &
                       f.postType.equals(post.type.name) &
                       f.postId.equals(post.id),
                 ))
