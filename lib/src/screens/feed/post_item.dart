@@ -6,6 +6,8 @@ import 'package:interstellar/src/controller/controller.dart';
 import 'package:interstellar/src/controller/server.dart';
 import 'package:interstellar/src/models/post.dart';
 import 'package:interstellar/src/utils/ap_urls.dart';
+import 'package:interstellar/src/utils/preview_images.dart';
+import 'package:interstellar/src/utils/video_url.dart';
 import 'package:interstellar/src/utils/utils.dart';
 import 'package:interstellar/src/widgets/account_scope.dart';
 import 'package:interstellar/src/widgets/ban_dialog.dart';
@@ -82,6 +84,10 @@ class _PostItemState extends State<PostItem> {
     }
   }
 
+  /// A thread in a list shows its body as plain text.
+  bool get _bodyPreview =>
+      widget.isPreview && widget.item.type == PostType.thread;
+
   @override
   Widget build(BuildContext context) {
     final ac = context.watch<AppController>();
@@ -101,9 +107,15 @@ class _PostItemState extends State<PostItem> {
           originInstance: getNameHost(context, widget.item.user.name),
           id: widget.item.id,
           title: widget.item.title,
-          image: widget.item.image,
+          // A list preview shows the body as plain text, so an image written
+          // in it becomes the preview image instead of raw markdown.
+          image:
+              widget.item.image ??
+              (_bodyPreview ? firstMarkdownImage(widget.item.body) : null),
           link: widget.item.url != null ? Uri.parse(widget.item.url!) : null,
-          body: widget.item.body,
+          embeddedVideo: embeddedVideoFile(widget.item.embedVideoUrl),
+          gallery: widget.item.gallery,
+          body: _bodyPreview ? previewText(widget.item.body) : widget.item.body,
           translation: _translation,
           lang: widget.item.lang,
           onTranslate: (String lang) async {

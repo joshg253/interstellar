@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:interstellar/src/utils/video_url.dart';
 
 void main() {
+  embeddedTests();
   test('a direct video file is playable as it is', () {
     for (final ext in ['mp4', 'webm', 'mov', 'm4v', 'MP4']) {
       final u = Uri.parse('https://cdn.example.com/a/v.$ext?x=1');
@@ -28,5 +29,26 @@ void main() {
     ]) {
       expect(playableVideoUrl(Uri.parse(u)), isNull, reason: u);
     }
+  });
+}
+
+void embeddedTests() {
+  group('embeddedVideoFile', () {
+    test('a video file is kept', () {
+      expect(
+        embeddedVideoFile('https://i.example/v.mp4'),
+        Uri.parse('https://i.example/v.mp4'),
+      );
+    });
+
+    test('a web page, nothing or an insecure address is not', () {
+      expect(
+        embeddedVideoFile('https://video.example/videos/embed/abc'),
+        isNull,
+      );
+      expect(embeddedVideoFile('http://i.example/v.mp4'), isNull);
+      expect(embeddedVideoFile(null), isNull);
+      expect(embeddedVideoFile(''), isNull);
+    });
   });
 }

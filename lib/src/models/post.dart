@@ -126,6 +126,10 @@ abstract class PostModel with _$PostModel {
     required List<EmojiReactionModel>? emojiReactions,
     // Only Mbin threads have these; sent back on edit so they aren't cleared.
     @Default(<String>[]) List<String> tags,
+    // A video the server found behind the link (Lemmy and PieFed send one).
+    String? embedVideoUrl,
+    // The pictures of a PieFed gallery post (the first is also the thumbnail).
+    @Default(<String>[]) List<String> gallery,
   }) = _PostModel;
 
   factory PostModel.fromMbinEntry(JsonMap json) => PostModel(
@@ -252,6 +256,7 @@ abstract class PostModel with _$PostModel {
       title: lemmyPost['name']! as String,
       // Only include link if it's not an Image post
       url: isImagePost ? null : lemmyPost['url'] as String?,
+      embedVideoUrl: lemmyPost['embed_video_url'] as String?,
       image: lemmyGetOptionalImage(
         isImagePost
             ? lemmyPost['url'] as String?
@@ -342,6 +347,12 @@ abstract class PostModel with _$PostModel {
       title: piefedPost['title']! as String,
       // Only include link if it's not an Image post
       url: isImagePost ? null : piefedPost['url'] as String?,
+      embedVideoUrl: piefedPost['embed_video_url'] as String?,
+      gallery:
+          (piefedPost['gallery'] as List<dynamic>?)
+              ?.whereType<String>()
+              .toList() ??
+          const [],
       image: lemmyGetOptionalImage(
         isImagePost
             ? piefedPost['url'] as String?
