@@ -358,7 +358,10 @@ class _ContentItemState extends State<ContentItem> {
         ? widget.embeddedVideo
         : isSupportedYouTubeVideo(link)
         ? link
-        : playableVideoUrl(link) ?? widget.embeddedVideo ?? _statusVideo;
+        : youTubeWatchUrl(link) ??
+              playableVideoUrl(link) ??
+              widget.embeddedVideo ??
+              _statusVideo;
     final isVideo = videoUri != null;
 
     final menuWidget = IconButton(
