@@ -3,6 +3,7 @@ import 'package:interstellar/src/utils/video_url.dart';
 
 void main() {
   embeddedTests();
+  youTubeFrontEndTests();
   test('a direct video file is playable as it is', () {
     for (final ext in ['mp4', 'webm', 'mov', 'm4v', 'MP4']) {
       final u = Uri.parse('https://cdn.example.com/a/v.$ext?x=1');
@@ -49,6 +50,37 @@ void embeddedTests() {
       expect(embeddedVideoFile('http://i.example/v.mp4'), isNull);
       expect(embeddedVideoFile(null), isNull);
       expect(embeddedVideoFile(''), isNull);
+    });
+  });
+}
+
+void youTubeFrontEndTests() {
+  group('youTubeWatchUrl', () {
+    final watch = Uri.parse('https://www.youtube.com/watch?v=xjgqCq8UmXE');
+
+    test('an Invidious or Piped embed or watch link is the YouTube video', () {
+      for (final u in [
+        'https://inv.nadeko.net/embed/xjgqCq8UmXE?list=RDxjgqCq8UmXE',
+        'https://invidious.example.com/watch?v=xjgqCq8UmXE&t=3',
+        'https://piped.example.com/watch?v=xjgqCq8UmXE',
+        'https://yewtu.be/embed/xjgqCq8UmXE',
+        'https://www.youtube.com/embed/xjgqCq8UmXE',
+        'https://www.youtube-nocookie.com/embed/xjgqCq8UmXE',
+      ]) {
+        expect(youTubeWatchUrl(Uri.parse(u)), watch, reason: u);
+      }
+    });
+
+    test('other sites, bad ids and plain http are not', () {
+      for (final u in [
+        'https://example.com/embed/xjgqCq8UmXE',
+        'https://example.com/watch?v=xjgqCq8UmXE',
+        'https://inv.nadeko.net/embed/short',
+        'https://inv.nadeko.net/channel/xjgqCq8UmXE',
+        'http://inv.nadeko.net/embed/xjgqCq8UmXE',
+      ]) {
+        expect(youTubeWatchUrl(Uri.parse(u)), isNull, reason: u);
+      }
     });
   });
 }

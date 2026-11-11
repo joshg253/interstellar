@@ -7,53 +7,107 @@ import 'package:interstellar/src/models/feed.dart';
 import 'package:interstellar/src/models/post.dart';
 import 'package:interstellar/src/models/user.dart';
 import 'package:interstellar/src/utils/utils.dart';
+import 'package:interstellar/src/widgets/account_scope.dart';
 import 'package:provider/provider.dart';
 
-/// Local url first, remote url last.
-/// Only one link if local is the source.
-List<Uri> genPostUrls(BuildContext context, PostModel post) {
+/// The host and software that own what is shown: the enclosing account scope's
+/// when there is one, else the selected account's. Ids belong to that server.
+({String host, ServerSoftware software}) _origin(BuildContext context) {
+  final scope = AccountScope.maybeOf(context);
+  if (scope != null) {
+    return (
+      host: scope.account.split('@').last,
+      software: scope.api.client.software,
+    );
+  }
   final ac = context.read<AppController>();
+  return (host: ac.instanceHost, software: ac.serverSoftware);
+}
 
-  final apUrl = post.apId == null ? null : Uri.tryParse(post.apId!);
+/// Local url first, remote url last.
+/// Only one link if local is the source. Mastodon has no local url: its ids
+/// are made up by the app.
+List<Uri> postUrls({
+  required String? apId,
+  required int id,
+  required String communityName,
+  required PostType type,
+  required String host,
+  required ServerSoftware software,
+}) {
+  final apUrl = apId == null ? null : Uri.tryParse(apId);
 
   return [
-    if (apUrl == null || apUrl.host != ac.instanceHost)
+    if (software != ServerSoftware.mastodon &&
+        (apUrl == null || apUrl.host != host))
       Uri.https(
-        ac.instanceHost,
-        ac.serverSoftware == ServerSoftware.mbin
-            ? '/m/${post.community.name}/${switch (post.type) {
+        host,
+        software == ServerSoftware.mbin
+            ? '/m/$communityName/${switch (type) {
                 PostType.thread => 't',
                 PostType.microblog => 'p',
-              }}/${post.id}'
-            : '/post/${post.id}',
+              }}/$id'
+            : '/post/$id',
       ),
     ?apUrl,
   ];
 }
 
+List<Uri> genPostUrls(BuildContext context, PostModel post) {
+  final origin = _origin(context);
+  return postUrls(
+    apId: post.apId,
+    id: post.id,
+    communityName: post.community.name,
+    type: post.type,
+    host: origin.host,
+    software: origin.software,
+  );
+}
+
 /// Local url first, remote url last.
 /// Only one link if local is the source.
-List<Uri> genCommentUrls(BuildContext context, CommentModel comment) {
-  final ac = context.read<AppController>();
-
-  final apUrl = comment.apId == null ? null : Uri.tryParse(comment.apId!);
+List<Uri> commentUrls({
+  required String? apId,
+  required int id,
+  required int postId,
+  required String communityName,
+  required PostType postType,
+  required String host,
+  required ServerSoftware software,
+}) {
+  final apUrl = apId == null ? null : Uri.tryParse(apId);
 
   return [
-    if (apUrl == null || apUrl.host != ac.instanceHost)
+    if (software != ServerSoftware.mastodon &&
+        (apUrl == null || apUrl.host != host))
       Uri.https(
-        ac.instanceHost,
-        ac.serverSoftware == ServerSoftware.mbin
-            ? '/m/${comment.community.name}/${switch (comment.postType) {
+        host,
+        software == ServerSoftware.mbin
+            ? '/m/$communityName/${switch (postType) {
                 PostType.thread => 't',
                 PostType.microblog => 'p',
-              }}/${comment.postId}/-/${switch (comment.postType) {
+              }}/$postId/-/${switch (postType) {
                 PostType.thread => 'comment',
                 PostType.microblog => 'reply',
-              }}/${comment.id}'
-            : '/comment/${comment.id}',
+              }}/$id'
+            : '/comment/$id',
       ),
     ?apUrl,
   ];
+}
+
+List<Uri> genCommentUrls(BuildContext context, CommentModel comment) {
+  final origin = _origin(context);
+  return commentUrls(
+    apId: comment.apId,
+    id: comment.id,
+    postId: comment.postId,
+    communityName: comment.community.name,
+    postType: comment.postType,
+    host: origin.host,
+    software: origin.software,
+  );
 }
 
 /// Local url first, remote url last.
