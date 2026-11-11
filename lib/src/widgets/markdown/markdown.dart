@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart' as mdf;
 import 'package:interstellar/src/controller/controller.dart';
@@ -45,7 +47,7 @@ class Markdown extends StatelessWidget {
           ),
       onTapLink: (text, href, title) async {
         if (href != null) {
-          openWebpageSecondary(context, Uri.parse(href));
+          unawaited(openLink(context, Uri.parse(href), openWebpageSecondary));
         }
       },
       imageBuilder: (uri, title, alt) {
