@@ -714,6 +714,27 @@
   "confirmUnfollow": "You are about to unfollow. Continue?",
   "altText": "Alt text",
   "settings_dataUtilities": "BETA: Data utilities",
+  "settings_globalSubscriptions": "Global subscriptions",
+  "settings_globalSubscriptions_help": "See every account's community subscriptions side by side and subscribe accounts to what they are missing",
+  "globalSubs_syncAll": "Subscribe all to everything",
+  "globalSubs_syncAll_confirm": "Make {count} new subscriptions across your accounts?",
+  "@globalSubs_syncAll_confirm": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "globalSubs_failed": "{count} could not be changed",
+  "@globalSubs_failed": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "globalSubs_loadFailed": "Could not load this account's subscriptions",
+  "globalSubs_empty": "No subscriptions found.",
   "settings_accountMigration": "Account migration",
   "settings_accountMigration_help": "Migrate subscriptions, follows, and blocks between accounts",
   "settings_accountMigration_step1": "Select source and destination accounts",
