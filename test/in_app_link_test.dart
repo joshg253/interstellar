@@ -59,10 +59,22 @@ void main() {
   });
 
   group('posts and comments', () {
-    test("only the account's own server can open them by id", () {
-      expect(_p('https://other.example/post/12'), isNull);
-      expect(_p('https://other.example/comment/12'), isNull);
-      expect(_p('https://other.example/m/cats/t/12/slug'), isNull);
+    test("another server's posts and comments are marked as not local", () {
+      for (final u in [
+        'https://other.example/post/12',
+        'https://other.example/comment/12',
+        'https://other.example/m/cats/t/12/slug',
+        'https://other.example/m/cats/t/12/-/comment/9',
+      ]) {
+        final l = _p(u);
+        expect(l, isNotNull, reason: u);
+        expect(
+          l is PostLink ? l.local : (l! as CommentLink).local,
+          isFalse,
+          reason: u,
+        );
+      }
+      expect((_p('https://home.example/post/12')! as PostLink).local, isTrue);
     });
 
     test('Lemmy and PieFed paths', () {

@@ -7,6 +7,7 @@ import 'package:interstellar/src/api/api.dart';
 import 'package:interstellar/src/controller/controller.dart';
 import 'package:interstellar/src/controller/router.gr.dart';
 import 'package:interstellar/src/controller/server.dart';
+import 'package:interstellar/src/models/comment.dart';
 import 'package:interstellar/src/models/post.dart';
 import 'package:interstellar/src/utils/globals.dart';
 import 'package:interstellar/src/utils/in_app_link.dart';
@@ -93,17 +94,32 @@ Future<bool> openLinkInApp(BuildContext context, Uri uri) async {
           router.push(UserRoute(username: u.name, userId: u.id, initData: u)),
         );
       case PostLink():
+        final post = link.local ? null : await ac.api.search.resolve(uri);
+        if (!link.local && post is! PostModel) return false;
+        final id = post is PostModel ? post.id : link.id;
+        final type = post is PostModel ? post.type : link.type;
         unawaited(
           router.push(
-            link.type == PostType.thread
-                ? ThreadRoute(postId: link.id)
-                : MicroblogRoute(postId: link.id),
+            type == PostType.thread
+                ? ThreadRoute(
+                    postId: id,
+                    initData: post is PostModel ? post : null,
+                  )
+                : MicroblogRoute(
+                    postId: id,
+                    initData: post is PostModel ? post : null,
+                  ),
           ),
         );
       case CommentLink():
+        final comment = link.local ? null : await ac.api.search.resolve(uri);
+        if (!link.local && comment is! CommentModel) return false;
         unawaited(
           router.push(
-            PostCommentRoute(postType: link.type, commentId: link.id),
+            PostCommentRoute(
+              postType: comment is CommentModel ? comment.postType : link.type,
+              commentId: comment is CommentModel ? comment.id : link.id,
+            ),
           ),
         );
     }

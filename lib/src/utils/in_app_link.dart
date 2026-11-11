@@ -17,15 +17,20 @@ class UserLink extends InAppLink {
 }
 
 class PostLink extends InAppLink {
-  const PostLink(this.id, this.type);
+  const PostLink(this.id, this.type, {required this.local});
   final int id;
   final PostType type;
+
+  /// Whether the id is the acting account's own server's. If not, the link
+  /// has to be resolved to that server's copy first.
+  final bool local;
 }
 
 class CommentLink extends InAppLink {
-  const CommentLink(this.id, this.type);
+  const CommentLink(this.id, this.type, {required this.local});
   final int id;
   final PostType type;
+  final bool local;
 }
 
 final _name = RegExp(r'^@?[A-Za-z0-9_.\-]+(@[A-Za-z0-9.\-]+)?$');
@@ -44,8 +49,8 @@ int? _id(String raw) =>
 
 /// Reads the path of a link to a Lemmy, PieFed or Mbin server. The caller has
 /// checked that the host runs such software. Posts and comments are numbered
-/// per server, so they open only when the link is to [ownHost], the host of
-/// the account that would open them.
+/// per server, so for a link to a server other than [ownHost], the host of the
+/// account that would open them, the id means nothing: `local` is false.
 InAppLink? parseInAppLink(Uri uri, {required String ownHost}) {
   if (uri.scheme != 'https' && uri.scheme != 'http') return null;
   final s = uri.pathSegments.where((e) => e.isNotEmpty).toList();
@@ -57,16 +62,15 @@ InAppLink? parseInAppLink(Uri uri, {required String ownHost}) {
       final name = _qualified(s[1], uri.host, ownHost);
       if (name == null) return null;
       if (s[0] == 'm' && s.length >= 4 && (s[2] == 't' || s[2] == 'p')) {
-        if (!own) return null;
         final id = _id(s[3]);
         if (id == null) return null;
         final type = s[2] == 't' ? PostType.thread : PostType.microblog;
         final comment = s.indexOf('comment');
         if (comment >= 0 && comment + 1 < s.length) {
           final cid = _id(s[comment + 1]);
-          return cid == null ? null : CommentLink(cid, type);
+          return cid == null ? null : CommentLink(cid, type, local: own);
         }
-        return PostLink(id, type);
+        return PostLink(id, type, local: own);
       }
       return s.length == 2 ? CommunityLink(name) : null;
     case 'u':
@@ -74,12 +78,12 @@ InAppLink? parseInAppLink(Uri uri, {required String ownHost}) {
       final name = _qualified(s[1], uri.host, ownHost);
       return name == null ? null : UserLink(name);
     case 'post' || 'comment':
-      if (!own || s.length != 2) return null;
+      if (s.length != 2) return null;
       final id = _id(s[1]);
       if (id == null) return null;
       return s[0] == 'post'
-          ? PostLink(id, PostType.thread)
-          : CommentLink(id, PostType.thread);
+          ? PostLink(id, PostType.thread, local: own)
+          : CommentLink(id, PostType.thread, local: own);
   }
   return null;
 }
