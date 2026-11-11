@@ -417,6 +417,18 @@ List<CommentModel> mastodonCommentTree(
   return [for (final d in byParent[rootRaw] ?? []) build(d, null, null)];
 }
 
+/// `name@host` of the accounts that are groups (what Lemmy, PieFed and Mbin
+/// communities look like to Mastodon) or, with [groups] false, of all others.
+Set<String> mastodonAccountNames(
+  List<JsonMap> accounts,
+  String accountHost, {
+  required bool groups,
+}) => {
+  for (final a in accounts)
+    if ((a['group'] as bool? ?? false) == groups)
+      normalizeName(a['acct']! as String, accountHost),
+};
+
 class MastodonAPI {
   MastodonAPI(this.client);
 
@@ -481,6 +493,54 @@ class MastodonAPI {
       e is RestrictedAuthException ||
       (e is http.ClientException &&
           RegExp(r'status (401|403|422)\b').hasMatch(e.message));
+
+  /// Every account of a list endpoint, following the `Link` header's `max_id`.
+  Future<List<JsonMap>> _accountPages(String path, {int maxPages = 100}) async {
+    final out = <JsonMap>[];
+    String? maxId;
+    var pages = 0;
+    do {
+      final response = await client.get(
+        path,
+        queryParams: {'limit': '80', 'max_id': maxId},
+      );
+      out.addAll(_list(response.body));
+      final next = RegExp(
+        r'<([^>]*)>\s*;\s*rel="next"',
+      ).firstMatch(response.headers['link'] ?? '')?[1];
+      maxId = next == null ? null : Uri.parse(next).queryParameters['max_id'];
+    } while (maxId != null && ++pages < maxPages);
+    return out;
+  }
+
+  /// The accounts the signed-in user follows (needs a token).
+  Future<List<JsonMap>> following() async {
+    final me = (await client.get('/accounts/verify_credentials')).bodyJson;
+    return _accountPages('/accounts/${me['id']}/following');
+  }
+
+  /// The accounts the signed-in user blocks (needs a token).
+  Future<List<JsonMap>> blocked() => _accountPages('/blocks');
+
+  /// Finds the account for `name@host`, asking the server to look it up on
+  /// the other server if it has not seen it.
+  Future<String> resolveAccount(String acct) async {
+    final response = await client.get(
+      '/accounts/search',
+      queryParams: {'q': acct, 'resolve': 'true', 'limit': '1'},
+    );
+    final found = _list(response.body);
+    if (found.isEmpty) throw Exception('No such account');
+    return found.first['id']! as String;
+  }
+
+  Future<void> setFollow(String id, bool state) async {
+    await client.post('/accounts/$id/${state ? 'follow' : 'unfollow'}');
+  }
+
+  Future<void> setBlock(String id, bool state) async {
+    await client.post('/accounts/$id/${state ? 'block' : 'unblock'}');
+  }
 
   /// The signed-in user (needs a token).
   Future<DetailedUserModel> me() async {

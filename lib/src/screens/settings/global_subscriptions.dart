@@ -3,9 +3,11 @@ import 'dart:io';
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:interstellar/src/api/blocks.dart';
+import 'package:interstellar/src/api/mastodon.dart';
 import 'package:interstellar/src/controller/controller.dart';
 import 'package:interstellar/src/controller/global_subs.dart';
 import 'package:interstellar/src/controller/router.gr.dart';
+import 'package:interstellar/src/controller/server.dart';
 import 'package:interstellar/src/screens/explore/explore_screen.dart';
 import 'package:interstellar/src/utils/utils.dart';
 import 'package:path/path.dart' as p;
@@ -26,6 +28,26 @@ GlobalSubsController globalSubsFor(AppController ac) =>
       fetch: (account, kind, cancelled) async {
         final api = await ac.getApiForAccount(account);
         final host = account.split('@').last;
+        if (api.client.software == ServerSoftware.mastodon) {
+          final masto = MastodonAPI(api.client);
+          return switch (kind) {
+            SubsKind.communities => mastodonAccountNames(
+              await masto.following(),
+              host,
+              groups: true,
+            ),
+            SubsKind.communityBlocks => mastodonAccountNames(
+              await masto.blocked(),
+              host,
+              groups: true,
+            ),
+            SubsKind.userBlocks => mastodonAccountNames(
+              await masto.blocked(),
+              host,
+              groups: false,
+            ),
+          };
+        }
         switch (kind) {
           case SubsKind.communityBlocks:
             return listBlocked(api, host, users: false);
@@ -50,6 +72,16 @@ GlobalSubsController globalSubsFor(AppController ac) =>
       apply: (account, kind, name, state) async {
         final api = await ac.getApiForAccount(account);
         final host = account.split('@').last;
+        if (api.client.software == ServerSoftware.mastodon) {
+          final masto = MastodonAPI(api.client);
+          final id = await masto.resolveAccount(name);
+          if (kind == SubsKind.communities) {
+            await masto.setFollow(id, state);
+          } else {
+            await masto.setBlock(id, state);
+          }
+          return;
+        }
         final local = denormalizeName(name, host);
         switch (kind) {
           case SubsKind.communities:
@@ -78,12 +110,12 @@ String globalSubsKindLabel(BuildContext context, SubsKind kind) =>
       SubsKind.userBlocks => l(context).globalSubs_kind_userBlocks,
     };
 
-/// Accounts that can list communities: signed in, and not Mastodon.
+/// Signed-in accounts. A Mastodon account's follows of groups stand for
+/// communities.
 List<String> globalSubsAccounts(AppController ac) => [
   for (final account in ac.accounts.keys)
     if (account.split('@').first.isNotEmpty &&
-        (ac.servers[account.split('@').last]?.software.canBeAppAccount ??
-            false))
+        ac.servers.containsKey(account.split('@').last))
       account,
 ];
 
