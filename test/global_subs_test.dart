@@ -34,6 +34,7 @@ GlobalSubsController _make(
 
 void main() {
   tableTests();
+  parallelTests();
   test('fetching stores each account and survives a restart', () async {
     final store = _MemStore();
     final c = _make(
@@ -195,4 +196,49 @@ void tableTests() {
     expect(applied, ['$b communities only-a@x.example true']);
     expect(c.snapshots[SubsKind.communities]![a]!.subs, {'only-a@x.example'});
   });
+}
+
+void parallelTests() {
+  test('one account syncs several items at once, but never too many', () async {
+    var running = 0;
+    var peak = 0;
+    final c = GlobalSubsController(
+      store: _MemStore(),
+      fetch: (account, kind, cancelled) async => account == a
+          ? {for (var i = 0; i < 12; i++) 'c$i@x.example'}
+          : <String>{},
+      apply: (account, kind, name, state) async {
+        running++;
+        if (running > peak) peak = running;
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+        running--;
+      },
+    );
+    await c.load();
+    await c.fetchAccounts([a, b]);
+    await c.syncMissing(SubsKind.communities, [a, b], only: b);
+    expect(peak, greaterThan(1));
+    expect(peak, lessThanOrEqualTo(4));
+    expect(c.snapshots[SubsKind.communities]![b]!.subs, hasLength(12));
+    expect(c.done, 12);
+  });
+
+  test(
+    'a failure in a parallel sync is listed and the rest still go',
+    () async {
+      final c = GlobalSubsController(
+        store: _MemStore(),
+        fetch: (account, kind, cancelled) async =>
+            account == a ? {'ok@x.example', 'bad@x.example'} : <String>{},
+        apply: (account, kind, name, state) async {
+          if (name.startsWith('bad')) throw StateError('no');
+        },
+      );
+      await c.load();
+      await c.fetchAccounts([a, b]);
+      await c.syncMissing(SubsKind.communities, [a, b]);
+      expect(c.failures, ['$b: bad@x.example']);
+      expect(c.snapshots[SubsKind.communities]![b]!.subs, {'ok@x.example'});
+    },
+  );
 }

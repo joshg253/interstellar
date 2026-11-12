@@ -251,7 +251,7 @@ class GlobalSubsController extends ChangeNotifier {
 
   /// Subscribes (or blocks) each account to everything the others have in the
   /// list [kind] and it lacks, judging by the cache; with [only], just that
-  /// account. One at a time so a server's rate limit holds.
+  /// account, a few at a time.
   Future<void> syncMissing(
     SubsKind kind,
     List<String> accounts, {
@@ -265,24 +265,48 @@ class GlobalSubsController extends ChangeNotifier {
     ];
     if (todo.isEmpty || !_begin('sync', accounts)) return;
     total = todo.length;
-    for (final (account, name) in todo) {
-      if (_cancel) break;
-      steps[account] = JobStep.running;
-      notifyListeners();
-      try {
-        await apply(account, kind, name, true);
-        _remember(account, kind, name, true);
-      } catch (_) {
-        failures.add('$account: $name');
-      }
-      done++;
-      notifyListeners();
-    }
+    // A few at a time per account (a server's rate limit is per account);
+    // different accounts run side by side.
+    await Future.wait([
+      for (final account in {for (final t in todo) t.$1})
+        _worker(account, kind, [
+          for (final t in todo)
+            if (t.$1 == account) t.$2,
+        ]),
+    ]);
     for (final a in accounts) {
       steps[a] = _cancel ? JobStep.cancelled : JobStep.done;
     }
     await _save();
     await _end();
+  }
+
+  static const _perAccount = 3;
+
+  Future<void> _worker(
+    String account,
+    SubsKind kind,
+    List<String> names,
+  ) async {
+    steps[account] = JobStep.running;
+    notifyListeners();
+    var next = 0;
+    await Future.wait([
+      for (var i = 0; i < _perAccount; i++)
+        () async {
+          while (!_cancel && next < names.length) {
+            final name = names[next++];
+            try {
+              await apply(account, kind, name, true);
+              _remember(account, kind, name, true);
+            } catch (_) {
+              failures.add('$account: $name');
+            }
+            done++;
+            notifyListeners();
+          }
+        }(),
+    ]);
   }
 
   void _remember(String account, SubsKind kind, String name, bool state) {

@@ -95,166 +95,181 @@ class _GlobalSubscriptionsCompareScreenState
               ),
             ],
           ),
-          body: Column(
-            children: [
-              // Scrolls on its own so the table keeps room with many accounts.
-              ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxHeight: MediaQuery.sizeOf(context).height * 0.4,
-                ),
-                child: SingleChildScrollView(
-                  child: Column(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.all(8),
-                        child: SegmentedButton<SubsKind>(
-                          showSelectedIcon: false,
-                          segments: [
-                            for (final kind in SubsKind.values)
-                              ButtonSegment(
-                                value: kind,
-                                label: Text(
-                                  globalSubsKindLabel(context, kind),
-                                  overflow: TextOverflow.ellipsis,
+          // Capped so a wide screen does not strand the boxes far from names.
+          body: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 640),
+              child: Column(
+                children: [
+                  // Scrolls on its own so the table keeps room with many accounts.
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.sizeOf(context).height * 0.4,
+                    ),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.all(8),
+                            child: SegmentedButton<SubsKind>(
+                              showSelectedIcon: false,
+                              segments: [
+                                for (final kind in SubsKind.values)
+                                  ButtonSegment(
+                                    value: kind,
+                                    label: Text(
+                                      globalSubsKindLabel(context, kind),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                              ],
+                              selected: {_kind},
+                              onSelectionChanged: (v) =>
+                                  setState(() => _kind = v.first),
+                            ),
+                          ),
+                          if (subs.running) ...[
+                            LinearProgressIndicator(
+                              value: subs.total == 0
+                                  ? null
+                                  : subs.done / subs.total,
+                            ),
+                            ListTile(
+                              dense: true,
+                              title: Text(
+                                l(
+                                  context,
+                                ).globalSubs_running(subs.done, subs.total),
+                              ),
+                              trailing: OutlinedButton(
+                                onPressed: subs.cancel,
+                                child: Text(l(context).cancel),
+                              ),
+                            ),
+                          ],
+                          SwitchListTile(
+                            dense: true,
+                            title: Text(l(context).globalSubs_onlyDifferences),
+                            value: _onlyDifferences,
+                            onChanged: (v) =>
+                                setState(() => _onlyDifferences = v),
+                          ),
+                          // One line per account: who it is, what it lacks, and a button
+                          // that gives it everything the others have.
+                          for (final account in accounts)
+                            ListTile(
+                              dense: true,
+                              leading: AccountAvatar(account),
+                              title: Text(
+                                account,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              subtitle: Text(
+                                l(context).globalSubs_accountCounts(
+                                  matrix.communities
+                                      .where(
+                                        (n) => matrix.isSubscribed(account, n),
+                                      )
+                                      .length,
+                                  matrix.missing(account).length,
                                 ),
                               ),
-                          ],
-                          selected: {_kind},
-                          onSelectionChanged: (v) =>
-                              setState(() => _kind = v.first),
-                        ),
-                      ),
-                      if (subs.running) ...[
-                        LinearProgressIndicator(
-                          value: subs.total == 0
-                              ? null
-                              : subs.done / subs.total,
-                        ),
-                        ListTile(
-                          dense: true,
-                          title: Text(
-                            l(
-                              context,
-                            ).globalSubs_running(subs.done, subs.total),
-                          ),
-                          trailing: OutlinedButton(
-                            onPressed: subs.cancel,
-                            child: Text(l(context).cancel),
-                          ),
-                        ),
-                      ],
-                      SwitchListTile(
-                        dense: true,
-                        title: Text(l(context).globalSubs_onlyDifferences),
-                        value: _onlyDifferences,
-                        onChanged: (v) => setState(() => _onlyDifferences = v),
-                      ),
-                      // One line per account: who it is, what it lacks, and a button
-                      // that gives it everything the others have.
-                      for (final account in accounts)
-                        ListTile(
-                          dense: true,
-                          leading: AccountAvatar(account),
-                          title: Text(account, overflow: TextOverflow.ellipsis),
-                          subtitle: Text(
-                            l(context).globalSubs_accountCounts(
-                              matrix.communities
-                                  .where((n) => matrix.isSubscribed(account, n))
-                                  .length,
-                              matrix.missing(account).length,
-                            ),
-                          ),
-                          trailing: FilledButton.tonal(
-                            onPressed:
-                                subs.running || matrix.missing(account).isEmpty
-                                ? null
-                                : () => _sync(accounts, only: account),
-                            child: Text(
-                              l(context).globalSubs_addMissing(
-                                matrix.missing(account).length,
-                              ),
-                            ),
-                          ),
-                        ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                        child: Text(
-                          l(context).globalSubs_tableHint,
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              // Column headers: the same avatars as above.
-              Row(
-                children: [
-                  const Spacer(),
-                  for (final account in accounts)
-                    SizedBox(
-                      width: _cellWidth,
-                      child: Tooltip(
-                        message: account,
-                        child: Center(child: AccountAvatar(account)),
-                      ),
-                    ),
-                ],
-              ),
-              const Divider(height: 1),
-              Expanded(
-                child: rows.isEmpty
-                    ? Center(child: Text(l(context).globalSubs_empty))
-                    : ListView.builder(
-                        itemCount: rows.length,
-                        itemExtent: 44,
-                        itemBuilder: (context, i) {
-                          final name = rows[i];
-                          return Row(
-                            children: [
-                              Expanded(
-                                child: Padding(
-                                  padding: const EdgeInsets.only(left: 16),
-                                  child: Text(
-                                    name,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+                              trailing: FilledButton.tonal(
+                                onPressed:
+                                    subs.running ||
+                                        matrix.missing(account).isEmpty
+                                    ? null
+                                    : () => _sync(accounts, only: account),
+                                child: Text(
+                                  l(context).globalSubs_addMissing(
+                                    matrix.missing(account).length,
                                   ),
                                 ),
                               ),
-                              for (final account in accounts)
-                                SizedBox(
-                                  width: _cellWidth,
-                                  child: _busy.contains(_cell(account, name))
-                                      ? const Center(
-                                          child: SizedBox(
-                                            width: 18,
-                                            height: 18,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                            ),
-                                          ),
-                                        )
-                                      : Checkbox(
-                                          value: matrix.isSubscribed(
-                                            account,
-                                            name,
-                                          ),
-                                          onChanged: subs.running
-                                              ? null
-                                              : (v) => _toggle(
-                                                  account,
-                                                  name,
-                                                  v ?? false,
-                                                ),
-                                        ),
-                                ),
-                            ],
-                          );
-                        },
+                            ),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                            child: Text(
+                              l(context).globalSubs_tableHint,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ),
+                        ],
                       ),
+                    ),
+                  ),
+                  // Column headers: the same avatars as above.
+                  Row(
+                    children: [
+                      const Spacer(),
+                      for (final account in accounts)
+                        SizedBox(
+                          width: _cellWidth,
+                          child: Tooltip(
+                            message: account,
+                            child: Center(child: AccountAvatar(account)),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const Divider(height: 1),
+                  Expanded(
+                    child: rows.isEmpty
+                        ? Center(child: Text(l(context).globalSubs_empty))
+                        : ListView.builder(
+                            itemCount: rows.length,
+                            itemExtent: 44,
+                            itemBuilder: (context, i) {
+                              final name = rows[i];
+                              return Row(
+                                children: [
+                                  Expanded(
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(left: 16),
+                                      child: Text(
+                                        name,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ),
+                                  for (final account in accounts)
+                                    SizedBox(
+                                      width: _cellWidth,
+                                      child:
+                                          _busy.contains(_cell(account, name))
+                                          ? const Center(
+                                              child: SizedBox(
+                                                width: 18,
+                                                height: 18,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                      strokeWidth: 2,
+                                                    ),
+                                              ),
+                                            )
+                                          : Checkbox(
+                                              value: matrix.isSubscribed(
+                                                account,
+                                                name,
+                                              ),
+                                              onChanged: subs.running
+                                                  ? null
+                                                  : (v) => _toggle(
+                                                      account,
+                                                      name,
+                                                      v ?? false,
+                                                    ),
+                                            ),
+                                    ),
+                                ],
+                              );
+                            },
+                          ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         );
       },
