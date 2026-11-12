@@ -250,13 +250,18 @@ class GlobalSubsController extends ChangeNotifier {
   }
 
   /// Subscribes (or blocks) each account to everything the others have in the
-  /// list [kind] and it lacks, judging by the cache. One at a time so a
-  /// server's rate limit holds.
-  Future<void> syncMissing(SubsKind kind, List<String> accounts) async {
+  /// list [kind] and it lacks, judging by the cache; with [only], just that
+  /// account. One at a time so a server's rate limit holds.
+  Future<void> syncMissing(
+    SubsKind kind,
+    List<String> accounts, {
+    String? only,
+  }) async {
     final m = matrix(kind, accounts);
     final todo = [
       for (final a in m.accounts)
-        for (final c in m.missing(a)) (a, c),
+        if (only == null || a == only)
+          for (final c in m.missing(a)) (a, c),
     ];
     if (todo.isEmpty || !_begin('sync', accounts)) return;
     total = todo.length;

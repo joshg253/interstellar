@@ -4,9 +4,13 @@ import 'package:interstellar/src/controller/controller.dart';
 import 'package:interstellar/src/controller/global_subs.dart';
 import 'package:interstellar/src/screens/settings/global_subscriptions.dart';
 import 'package:interstellar/src/utils/utils.dart';
+import 'package:interstellar/src/widgets/account_avatar.dart';
 import 'package:provider/provider.dart';
 
-/// Every account's cached community subscriptions side by side.
+const _cellWidth = 52.0;
+
+/// Every account's cached lists as a table: one row per item, one column per
+/// account.
 @RoutePage()
 class GlobalSubscriptionsCompareScreen extends StatefulWidget {
   const GlobalSubscriptionsCompareScreen({super.key});
@@ -20,25 +24,28 @@ class _GlobalSubscriptionsCompareScreenState
     extends State<GlobalSubscriptionsCompareScreen> {
   final Set<String> _busy = {};
   SubsKind _kind = SubsKind.communities;
+  bool _onlyDifferences = true;
 
-  String _cell(String account, String community) => '$account\n$community';
+  String _cell(String account, String name) => '$account\n$name';
 
-  Future<void> _toggle(String account, String community, bool value) async {
+  Future<void> _toggle(String account, String name, bool value) async {
     final subs = globalSubsFor(context.read<AppController>());
-    final key = _cell(account, community);
+    final key = _cell(account, name);
     setState(() => _busy.add(key));
-    await subs.setOne(account, _kind, community, value);
+    await subs.setOne(account, _kind, name, value);
     if (mounted) setState(() => _busy.remove(key));
   }
 
-  Future<void> _syncAll(List<String> accounts) async {
+  /// Gives [only] (or every account) what the others have.
+  Future<void> _sync(List<String> accounts, {String? only}) async {
     final subs = globalSubsFor(context.read<AppController>());
     final m = subs.matrix(_kind, accounts);
+    final count = only == null ? m.missingTotal : m.missing(only).length;
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(l(context).globalSubs_syncAll),
-        content: Text(l(context).globalSubs_syncAll_confirm(m.missingTotal)),
+        title: Text(only ?? l(context).globalSubs_syncAll),
+        content: Text(l(context).globalSubs_syncAll_confirm(count)),
         actions: [
           OutlinedButton(
             onPressed: () => Navigator.pop(context, false),
@@ -53,7 +60,7 @@ class _GlobalSubscriptionsCompareScreenState
     );
     if (ok != true) return;
     // Runs in the background; progress shows here and on the status screen.
-    subs.syncMissing(_kind, accounts);
+    subs.syncMissing(_kind, accounts, only: only);
   }
 
   @override
@@ -69,6 +76,12 @@ class _GlobalSubscriptionsCompareScreenState
       listenable: subs,
       builder: (context, _) {
         final matrix = subs.matrix(_kind, accounts);
+        final rows = [
+          for (final name in matrix.communities)
+            if (!_onlyDifferences ||
+                accounts.any((a) => !matrix.isSubscribed(a, name)))
+              name,
+        ];
         return Scaffold(
           appBar: AppBar(
             title: Text(l(context).globalSubs_compare),
@@ -78,11 +91,11 @@ class _GlobalSubscriptionsCompareScreenState
                 icon: const Icon(Icons.sync),
                 onPressed: subs.running || matrix.missingTotal == 0
                     ? null
-                    : () => _syncAll(accounts),
+                    : () => _sync(accounts),
               ),
             ],
           ),
-          body: ListView(
+          body: Column(
             children: [
               Padding(
                 padding: const EdgeInsets.all(8),
@@ -107,6 +120,7 @@ class _GlobalSubscriptionsCompareScreenState
                   value: subs.total == 0 ? null : subs.done / subs.total,
                 ),
                 ListTile(
+                  dense: true,
                   title: Text(
                     l(context).globalSubs_running(subs.done, subs.total),
                   ),
@@ -116,31 +130,96 @@ class _GlobalSubscriptionsCompareScreenState
                   ),
                 ),
               ],
-              if (matrix.communities.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(l(context).globalSubs_empty),
-                ),
-              for (final community in matrix.communities)
-                ListTile(
-                  title: Text(community),
-                  subtitle: Wrap(
-                    spacing: 6,
-                    children: [
-                      for (final account in accounts)
-                        FilterChip(
-                          label: Text(account),
-                          selected: matrix.isSubscribed(account, community),
-                          visualDensity: VisualDensity.compact,
-                          onSelected:
-                              subs.running ||
-                                  _busy.contains(_cell(account, community))
+              SwitchListTile(
+                dense: true,
+                title: Text(l(context).globalSubs_onlyDifferences),
+                value: _onlyDifferences,
+                onChanged: (v) => setState(() => _onlyDifferences = v),
+              ),
+              // Header: one column per account, with a button that gives that
+              // account everything the others have.
+              Row(
+                children: [
+                  const Spacer(),
+                  for (final account in accounts)
+                    SizedBox(
+                      width: _cellWidth,
+                      child: Tooltip(
+                        message: account,
+                        child: InkResponse(
+                          onTap: subs.running || matrix.missing(account).isEmpty
                               ? null
-                              : (value) => _toggle(account, community, value),
+                              : () => _sync(accounts, only: account),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              AccountAvatar(account),
+                              Text(
+                                matrix.missing(account).isEmpty
+                                    ? '✓'
+                                    : '+${matrix.missing(account).length}',
+                                style: Theme.of(context).textTheme.labelSmall,
+                              ),
+                            ],
+                          ),
                         ),
-                    ],
-                  ),
-                ),
+                      ),
+                    ),
+                ],
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: rows.isEmpty
+                    ? Center(child: Text(l(context).globalSubs_empty))
+                    : ListView.builder(
+                        itemCount: rows.length,
+                        itemExtent: 44,
+                        itemBuilder: (context, i) {
+                          final name = rows[i];
+                          return Row(
+                            children: [
+                              Expanded(
+                                child: Padding(
+                                  padding: const EdgeInsets.only(left: 16),
+                                  child: Text(
+                                    name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ),
+                              for (final account in accounts)
+                                SizedBox(
+                                  width: _cellWidth,
+                                  child: _busy.contains(_cell(account, name))
+                                      ? const Center(
+                                          child: SizedBox(
+                                            width: 18,
+                                            height: 18,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                            ),
+                                          ),
+                                        )
+                                      : Checkbox(
+                                          value: matrix.isSubscribed(
+                                            account,
+                                            name,
+                                          ),
+                                          onChanged: subs.running
+                                              ? null
+                                              : (v) => _toggle(
+                                                  account,
+                                                  name,
+                                                  v ?? false,
+                                                ),
+                                        ),
+                                ),
+                            ],
+                          );
+                        },
+                      ),
+              ),
             ],
           ),
         );

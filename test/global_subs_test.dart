@@ -33,6 +33,7 @@ GlobalSubsController _make(
 );
 
 void main() {
+  tableTests();
   test('fetching stores each account and survives a restart', () async {
     final store = _MemStore();
     final c = _make(
@@ -173,4 +174,25 @@ void main() {
       expect(await store.read(), isNull);
     },
   );
+}
+
+void tableTests() {
+  test('syncing onto one account leaves the others alone', () async {
+    final applied = <String>[];
+    final c = _make(
+      _MemStore(),
+      server: {
+        SubsKind.communities: {
+          a: {'only-a@x.example'},
+          b: {'only-b@y.example'},
+        },
+      },
+      applied: applied,
+    );
+    await c.load();
+    await c.fetchAccounts([a, b]);
+    await c.syncMissing(SubsKind.communities, [a, b], only: b);
+    expect(applied, ['$b communities only-a@x.example true']);
+    expect(c.snapshots[SubsKind.communities]![a]!.subs, {'only-a@x.example'});
+  });
 }

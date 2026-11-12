@@ -753,6 +753,7 @@
       "when": { "type": "String" }
     }
   },
+  "globalSubs_onlyDifferences": "Only differences",
   "globalSubs_kind_communities": "Communities",
   "globalSubs_kind_communityBlocks": "Blocked communities",
   "globalSubs_kind_userBlocks": "Blocked users",
