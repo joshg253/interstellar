@@ -36,6 +36,7 @@ void main() {
   tableTests();
   parallelTests();
   batchTests();
+  progressTests();
   test('fetching stores each account and survives a restart', () async {
     final store = _MemStore();
     final c = _make(
@@ -289,5 +290,26 @@ void batchTests() {
       true,
     );
     expect(applied, ['$b one@x.example true']);
+  });
+}
+
+void progressTests() {
+  test('progress is counted per account', () async {
+    final c = GlobalSubsController(
+      store: _MemStore(),
+      fetch: (account, kind, cancelled) async => account == a
+          ? {'one@x.example', 'two@x.example', 'three@x.example'}
+          : <String>{},
+      apply: (account, kind, name, state) async {},
+    );
+    await c.load();
+    await c.fetchAccounts([a, b]);
+    // One step per list for each account.
+    expect(c.accountTotal[a], SubsKind.values.length);
+    expect(c.accountDone[a], SubsKind.values.length);
+    await c.syncMissing(SubsKind.communities, [a, b]);
+    expect(c.accountTotal[b], 3);
+    expect(c.accountDone[b], 3);
+    expect(c.accountTotal.containsKey(a), isFalse);
   });
 }

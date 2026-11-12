@@ -105,6 +105,10 @@ class GlobalSubsController extends ChangeNotifier {
   int total = 0;
   int done = 0;
 
+  /// Steps of the current or last job, per account.
+  final Map<String, int> accountTotal = {};
+  final Map<String, int> accountDone = {};
+
   bool _cancel = false;
   bool _loaded = false;
 
@@ -187,6 +191,8 @@ class GlobalSubsController extends ChangeNotifier {
       ..addEntries(accounts.map((a) => MapEntry(a, JobStep.waiting)));
     total = steps.length;
     done = 0;
+    accountTotal.clear();
+    accountDone.clear();
     notifyListeners();
     return true;
   }
@@ -207,6 +213,8 @@ class GlobalSubsController extends ChangeNotifier {
       for (final account in accounts)
         () async {
           steps[account] = JobStep.running;
+          accountTotal[account] = kinds.length;
+          accountDone[account] = 0;
           notifyListeners();
           var failed = false;
           for (final kind in kinds) {
@@ -223,6 +231,8 @@ class GlobalSubsController extends ChangeNotifier {
               failed = true;
               failures.add('$account: ${kind.name}');
             }
+            accountDone[account] = accountDone[account]! + 1;
+            notifyListeners();
           }
           steps[account] = _cancel
               ? JobStep.cancelled
@@ -318,6 +328,8 @@ class GlobalSubsController extends ChangeNotifier {
     bool state = true,
   }) async {
     steps[account] = JobStep.running;
+    accountTotal[account] = names.length;
+    accountDone[account] = 0;
     notifyListeners();
     var next = 0;
     await Future.wait([
@@ -331,6 +343,7 @@ class GlobalSubsController extends ChangeNotifier {
             } catch (_) {
               failures.add('$account: $name');
             }
+            accountDone[account] = accountDone[account]! + 1;
             done++;
             notifyListeners();
           }

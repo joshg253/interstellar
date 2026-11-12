@@ -219,11 +219,6 @@ class _GlobalSubscriptionsCompareScreenState
                             ),
                           ),
                           if (subs.running) ...[
-                            LinearProgressIndicator(
-                              value: subs.total == 0
-                                  ? null
-                                  : subs.done / subs.total,
-                            ),
                             ListTile(
                               dense: true,
                               title: Text(
@@ -246,7 +241,7 @@ class _GlobalSubscriptionsCompareScreenState
                           ),
                           // One line per account: who it is, what it lacks, and a button
                           // that gives it everything the others have.
-                          for (final account in accounts)
+                          for (final account in accounts) ...[
                             ListTile(
                               dense: true,
                               leading: AccountAvatar(account),
@@ -277,6 +272,8 @@ class _GlobalSubscriptionsCompareScreenState
                                 ),
                               ),
                             ),
+                            globalSubsAccountBar(subs, account),
+                          ],
                           Padding(
                             padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                             child: Text(
