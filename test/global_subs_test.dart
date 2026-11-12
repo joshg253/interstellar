@@ -54,6 +54,7 @@ void main() {
   mirrorTests();
   masterTests();
   simpleTests();
+  networkTests();
   test('fetching stores each account and survives a restart', () async {
     final store = _MemStore();
     final c = _make(
@@ -725,5 +726,62 @@ void simpleTests() {
     await c.applyMaster(SubsKind.values, [b]);
     expect(applied.length, lessThanOrEqualTo(3));
     expect(c.running, isFalse);
+  });
+}
+
+void networkTests() {
+  test(
+    'a fetch that hits a network error is retried before it fails',
+    () async {
+      var calls = 0;
+      final c = GlobalSubsController(
+        store: _MemStore(),
+        retryDelay: Duration.zero,
+        fetch: (account, kind, cancelled) async {
+          calls++;
+          if (calls <= 2) {
+            throw Exception(
+              'ClientException with SocketException: Failed host lookup',
+            );
+          }
+          return {'one@x.example'};
+        },
+        apply: (account, kind, name, state) async {},
+      );
+      await c.load();
+      await c.fetchAccounts([a], kinds: [SubsKind.communities]);
+      expect(c.failures, isEmpty);
+      expect(c.snapshots[SubsKind.communities]![a]!.subs, {'one@x.example'});
+    },
+  );
+
+  test('a fetch that keeps failing on the network is listed', () async {
+    final c = GlobalSubsController(
+      store: _MemStore(),
+      retryDelay: Duration.zero,
+      fetch: (account, kind, cancelled) async =>
+          throw Exception('ClientException with SocketException: abort'),
+      apply: (account, kind, name, state) async {},
+    );
+    await c.load();
+    await c.fetchAccounts([a], kinds: [SubsKind.communities]);
+    expect(c.failures.single, contains('SocketException'));
+    expect(c.running, isFalse);
+  });
+
+  test('another kind of error is not retried', () async {
+    var calls = 0;
+    final c = GlobalSubsController(
+      store: _MemStore(),
+      retryDelay: Duration.zero,
+      fetch: (account, kind, cancelled) async {
+        calls++;
+        throw StateError('bad shape');
+      },
+      apply: (account, kind, name, state) async {},
+    );
+    await c.load();
+    await c.fetchAccounts([a], kinds: [SubsKind.communities]);
+    expect(calls, 1);
   });
 }

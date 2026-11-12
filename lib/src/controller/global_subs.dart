@@ -238,7 +238,9 @@ class GlobalSubsController extends ChangeNotifier {
           for (final kind in kinds) {
             if (_cancel) break;
             try {
-              final subs = await fetch(account, kind, () => _cancel);
+              final subs = await _retrying(
+                () => fetch(account, kind, () => _cancel),
+              );
               if (subs != null && !_cancel) {
                 snapshots[kind]![account] = AccountSnapshot(
                   subs,
@@ -514,24 +516,29 @@ class GlobalSubsController extends ChangeNotifier {
     ]);
   }
 
-  /// Tries again, after a growing wait, when the server says it is being asked
-  /// too often (HTTP 429).
+  /// Runs [call], trying again after a growing wait when the server says it
+  /// is being asked too often (HTTP 429) or the network dropped the request.
+  /// Other errors are not retried.
+  Future<T> _retrying<T>(Future<T> Function() call) async {
+    for (var attempt = 0; ; attempt++) {
+      try {
+        return await call();
+      } catch (e) {
+        final text = e.toString();
+        final transient =
+            text.contains('status 429') || text.contains('SocketException');
+        if (!transient || attempt >= 4 || _cancel) rethrow;
+        await Future<void>.delayed(retryDelay * (1 << attempt));
+      }
+    }
+  }
+
   Future<void> _applyWithRetry(
     String account,
     SubsKind kind,
     String name,
     bool state,
-  ) async {
-    for (var attempt = 0; ; attempt++) {
-      try {
-        return await apply(account, kind, name, state);
-      } catch (e) {
-        final limited = e.toString().contains('status 429');
-        if (!limited || attempt >= 4 || _cancel) rethrow;
-        await Future<void>.delayed(retryDelay * (1 << attempt));
-      }
-    }
-  }
+  ) => _retrying(() => apply(account, kind, name, state));
 
   void _remember(String account, SubsKind kind, String name, bool state) {
     final old = snapshots[kind]![account];
