@@ -218,20 +218,6 @@ class _GlobalSubscriptionsCompareScreenState
                                   setState(() => _kind = v.first),
                             ),
                           ),
-                          if (subs.running) ...[
-                            ListTile(
-                              dense: true,
-                              title: Text(
-                                l(
-                                  context,
-                                ).globalSubs_running(subs.done, subs.total),
-                              ),
-                              trailing: OutlinedButton(
-                                onPressed: subs.cancel,
-                                child: Text(l(context).cancel),
-                              ),
-                            ),
-                          ],
                           SwitchListTile(
                             dense: true,
                             title: Text(l(context).globalSubs_onlyDifferences),
@@ -250,14 +236,23 @@ class _GlobalSubscriptionsCompareScreenState
                                 overflow: TextOverflow.ellipsis,
                               ),
                               subtitle: Text(
-                                l(context).globalSubs_accountCounts(
-                                  matrix.communities
-                                      .where(
-                                        (n) => matrix.isSubscribed(account, n),
+                                subs.running &&
+                                        (subs.accountTotal[account] ?? 0) > 0
+                                    ? l(context).globalSubs_running(
+                                        subs.accountDone[account] ?? 0,
+                                        subs.accountTotal[account]!,
                                       )
-                                      .length,
-                                  matrix.missing(account).length,
-                                ),
+                                    : l(context).globalSubs_accountCounts(
+                                        matrix.communities
+                                            .where(
+                                              (n) => matrix.isSubscribed(
+                                                account,
+                                                n,
+                                              ),
+                                            )
+                                            .length,
+                                        matrix.missing(account).length,
+                                      ),
                               ),
                               trailing: FilledButton.tonal(
                                 onPressed:
@@ -285,6 +280,18 @@ class _GlobalSubscriptionsCompareScreenState
                       ),
                     ),
                   ),
+                  // Outside the scrolling part, so Cancel never scrolls away.
+                  if (subs.running)
+                    ListTile(
+                      dense: true,
+                      title: Text(
+                        l(context).globalSubs_running(subs.done, subs.total),
+                      ),
+                      trailing: OutlinedButton(
+                        onPressed: subs.cancel,
+                        child: Text(l(context).cancel),
+                      ),
+                    ),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     child: TextField(
