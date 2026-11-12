@@ -755,6 +755,27 @@
   },
   "globalSubs_onlyDifferences": "Only differences",
   "globalSubs_search": "Search",
+  "globalSubs_editMaster": "Edit the global list",
+  "globalSubs_editMaster_help": "Edit one saved list, then make chosen accounts match it",
+  "globalSubs_masterTitle": "Global list",
+  "globalSubs_masterNone": "No global list yet. Fetch from the servers, then rebuild it from the accounts.",
+  "globalSubs_masterInfo": "{count} entries, updated {when}",
+  "@globalSubs_masterInfo": {
+    "placeholders": {
+      "count": { "type": "int" },
+      "when": { "type": "String" }
+    }
+  },
+  "globalSubs_rebuild": "Rebuild from accounts",
+  "globalSubs_rebuildConfirm": "Replace the global list with what the accounts hold now? Your edits to it are lost.",
+  "globalSubs_addEntry": "Add entry",
+  "globalSubs_removeSelected": "Remove {count}",
+  "@globalSubs_removeSelected": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "globalSubs_applyTo": "Apply to accounts…",
   "globalSubs_matchAnother": "Make this match another account…",
   "globalSubs_copyToOthers": "Replace the other accounts' lists with this one",
   "globalSubs_clearList": "Clear this list ({count})",

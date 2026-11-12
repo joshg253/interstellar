@@ -268,6 +268,14 @@ class _GlobalSubscriptionsScreenState extends State<GlobalSubscriptionsScreen> {
                 onTap: subs.saveMerged,
               ),
               ListTile(
+                leading: const Icon(Icons.edit_note),
+                title: Text(l(context).globalSubs_editMaster),
+                subtitle: Text(l(context).globalSubs_editMaster_help),
+                enabled: subs.hasData,
+                onTap: () =>
+                    context.router.push(const GlobalSubscriptionsListRoute()),
+              ),
+              ListTile(
                 leading: const Icon(Icons.compare_arrows),
                 title: Text(l(context).globalSubs_compare),
                 subtitle: Text(l(context).globalSubs_compare_help),

@@ -277,6 +277,28 @@ class GlobalSubsController extends ChangeNotifier {
     await _save();
   }
 
+  /// Replaces the global list of [kind] with the merge of what the accounts
+  /// hold now.
+  Future<void> rebuildMaster(SubsKind kind) async {
+    if (snapshots[kind]!.isEmpty) return;
+    master[kind] = merged(kind);
+    masterUpdated[kind] = DateTime.now();
+    notifyListeners();
+    await _save();
+  }
+
+  /// Edits the global list of [kind]: adds and removes entries.
+  Future<void> editMaster(
+    SubsKind kind, {
+    Iterable<String> add = const [],
+    Iterable<String> remove = const [],
+  }) async {
+    master[kind] = {...?master[kind], ...add}..removeAll(remove);
+    masterUpdated[kind] = DateTime.now();
+    notifyListeners();
+    await _save();
+  }
+
   /// Subscribes (or blocks) each account to everything the others have in the
   /// list [kind] and it lacks, judging by the cache; with [only], just that
   /// account, a few at a time.
@@ -360,24 +382,37 @@ class GlobalSubsController extends ChangeNotifier {
     ]);
   }
 
-  /// What it takes to make each of [targets] hold exactly what [source] holds
-  /// in the list [kind]. Accounts that already match are left out.
+  /// What it takes to make each of [targets] hold exactly [from] in the list
+  /// [kind]. Accounts without a fetched list, or already matching, are left
+  /// out.
+  Map<String, ({Set<String> add, Set<String> remove})> planFor(
+    SubsKind kind,
+    Set<String> from,
+    Iterable<String> targets,
+  ) => {
+    for (final t in targets)
+      if (snapshots[kind]![t] != null)
+        t: (
+          add: from.difference(snapshots[kind]![t]!.subs),
+          remove: snapshots[kind]![t]!.subs.difference(from),
+        ),
+  }..removeWhere((_, v) => v.add.isEmpty && v.remove.isEmpty);
+
+  /// The plan for making each of [targets] match the account [source].
   Map<String, ({Set<String> add, Set<String> remove})> replacePlan(
     SubsKind kind,
     String source,
     Iterable<String> targets,
-  ) {
-    final from = snapshots[kind]![source]?.subs ?? <String>{};
-    return {
-      for (final t in targets)
-        if (t != source)
-          if (snapshots[kind]![t] != null)
-            t: (
-              add: from.difference(snapshots[kind]![t]!.subs),
-              remove: snapshots[kind]![t]!.subs.difference(from),
-            ),
-    }..removeWhere((_, v) => v.add.isEmpty && v.remove.isEmpty);
-  }
+  ) => planFor(kind, snapshots[kind]![source]?.subs ?? <String>{}, [
+    for (final t in targets)
+      if (t != source) t,
+  ]);
+
+  /// The plan for making each of [targets] match the saved global list.
+  Map<String, ({Set<String> add, Set<String> remove})> masterPlan(
+    SubsKind kind,
+    Iterable<String> targets,
+  ) => planFor(kind, master[kind] ?? <String>{}, targets);
 
   /// Makes each of [targets] match [source] exactly: adds what it lacks and
   /// removes what it has beyond it. The source is not changed.
@@ -385,8 +420,18 @@ class GlobalSubsController extends ChangeNotifier {
     SubsKind kind,
     String source,
     List<String> targets,
+  ) => _runPlan(kind, replacePlan(kind, source, targets));
+
+  /// Makes each of [targets] match the saved global list exactly.
+  Future<void> applyMaster(SubsKind kind, List<String> targets) =>
+      master[kind] == null
+      ? Future.value()
+      : _runPlan(kind, masterPlan(kind, targets));
+
+  Future<void> _runPlan(
+    SubsKind kind,
+    Map<String, ({Set<String> add, Set<String> remove})> plan,
   ) async {
-    final plan = replacePlan(kind, source, targets);
     if (plan.isEmpty || !_begin(plan.keys)) return;
     for (final e in plan.entries) {
       accountTotal[e.key] = e.value.add.length + e.value.remove.length;

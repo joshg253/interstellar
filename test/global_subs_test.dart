@@ -52,6 +52,7 @@ void main() {
   jobsTests();
   refreshTests();
   mirrorTests();
+  masterTests();
   test('fetching stores each account and survives a restart', () async {
     final store = _MemStore();
     final c = _make(
@@ -549,4 +550,94 @@ void mirrorTests() {
     expect(c.accountTotal[messy], 3);
     expect(c.accountDone[messy], 3);
   });
+}
+
+void masterTests() {
+  GlobalSubsController make(_MemStore store, List<String> applied) {
+    final srv = <String, Set<String>>{
+      a: {'one@x.example', 'junk@x.example'},
+      b: {'two@y.example'},
+    };
+    return GlobalSubsController(
+      store: store,
+      fetch: (account, kind, cancelled) async => {...?srv[account]},
+      apply: (account, kind, name, state) async {
+        applied.add('$account $name $state');
+        state ? srv[account]!.add(name) : srv[account]!.remove(name);
+      },
+    );
+  }
+
+  test(
+    'the global list can be rebuilt, edited and survives a restart',
+    () async {
+      final store = _MemStore();
+      final c = make(store, []);
+      await c.load();
+      await c.fetchAccounts([a, b]);
+      await c.rebuildMaster(SubsKind.communities);
+      expect(c.master[SubsKind.communities], {
+        'one@x.example',
+        'junk@x.example',
+        'two@y.example',
+      });
+      await c.editMaster(
+        SubsKind.communities,
+        remove: ['junk@x.example'],
+        add: ['new@z.example'],
+      );
+      expect(c.master[SubsKind.communities], {
+        'one@x.example',
+        'two@y.example',
+        'new@z.example',
+      });
+      final again = make(store, []);
+      await again.load();
+      expect(again.master[SubsKind.communities], {
+        'one@x.example',
+        'two@y.example',
+        'new@z.example',
+      });
+    },
+  );
+
+  test('applying the global list makes the chosen accounts match it', () async {
+    final applied = <String>[];
+    final c = make(_MemStore(), applied);
+    await c.load();
+    await c.fetchAccounts([a, b]);
+    await c.rebuildMaster(SubsKind.communities);
+    await c.editMaster(SubsKind.communities, remove: ['junk@x.example']);
+    await c.applyMaster(SubsKind.communities, [a, b]);
+    final snaps = c.snapshots[SubsKind.communities]!;
+    expect(snaps[a]!.subs, {'one@x.example', 'two@y.example'});
+    expect(snaps[b]!.subs, {'one@x.example', 'two@y.example'});
+    expect(applied, contains('$a junk@x.example false'));
+    expect(c.failures, isEmpty);
+  });
+
+  test('applying with no saved list does nothing', () async {
+    final applied = <String>[];
+    final c = make(_MemStore(), applied);
+    await c.load();
+    await c.fetchAccounts([a, b]);
+    await c.applyMaster(SubsKind.communities, [a, b]);
+    expect(applied, isEmpty);
+  });
+
+  test(
+    'the plan against the global list says what changes per account',
+    () async {
+      final c = make(_MemStore(), []);
+      await c.load();
+      await c.fetchAccounts([a, b]);
+      await c.rebuildMaster(SubsKind.communities);
+      await c.editMaster(SubsKind.communities, remove: ['junk@x.example']);
+      final plan = c.masterPlan(SubsKind.communities, [a, b]);
+      expect(plan[a]!.add, {'two@y.example'});
+      expect(plan[a]!.remove, {'junk@x.example'});
+      expect(plan[b]!.add, {'one@x.example'});
+      expect(plan[b]!.remove, isEmpty);
+    },
+  );
 }
