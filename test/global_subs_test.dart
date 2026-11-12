@@ -16,21 +16,33 @@ class _MemStore implements SubsStore {
 const a = 'a@x.example';
 const b = 'b@y.example';
 
-/// [server] answers per kind, then per account.
+/// [server] holds the lists per kind, then per account; applying changes them.
 GlobalSubsController _make(
   _MemStore store, {
   Map<SubsKind, Map<String, Set<String>>> server = const {},
   Set<(String, SubsKind)> failing = const {},
   List<String>? applied,
-}) => GlobalSubsController(
-  store: store,
-  fetch: (account, kind, cancelled) async {
-    if (failing.contains((account, kind))) throw StateError('down');
-    return cancelled() ? null : server[kind]?[account] ?? {};
-  },
-  apply: (account, kind, name, state) async =>
-      applied?.add('$account ${kind.name} $name $state'),
-);
+}) {
+  final live = {
+    for (final k in SubsKind.values)
+      k: {
+        for (final e in (server[k] ?? <String, Set<String>>{}).entries)
+          e.key: {...e.value},
+      },
+  };
+  return GlobalSubsController(
+    store: store,
+    fetch: (account, kind, cancelled) async {
+      if (failing.contains((account, kind))) throw StateError('down');
+      return cancelled() ? null : {...?live[kind]![account]};
+    },
+    apply: (account, kind, name, state) async {
+      applied?.add('$account ${kind.name} $name $state');
+      final set = live[kind]!.putIfAbsent(account, () => {});
+      state ? set.add(name) : set.remove(name);
+    },
+  );
+}
 
 void main() {
   tableTests();
@@ -38,6 +50,7 @@ void main() {
   batchTests();
   progressTests();
   jobsTests();
+  refreshTests();
   test('fetching stores each account and survives a restart', () async {
     final store = _MemStore();
     final c = _make(
@@ -205,15 +218,17 @@ void parallelTests() {
   test('one account syncs several items at once, but never too many', () async {
     var running = 0;
     var peak = 0;
+    final srv = <String, Set<String>>{
+      a: {for (var i = 0; i < 12; i++) 'c$i@x.example'},
+    };
     final c = GlobalSubsController(
       store: _MemStore(),
-      fetch: (account, kind, cancelled) async => account == a
-          ? {for (var i = 0; i < 12; i++) 'c$i@x.example'}
-          : <String>{},
+      fetch: (account, kind, cancelled) async => {...?srv[account]},
       apply: (account, kind, name, state) async {
         running++;
         if (running > peak) peak = running;
         await Future<void>.delayed(const Duration(milliseconds: 5));
+        (srv[account] ??= {}).add(name);
         running--;
       },
     );
@@ -229,12 +244,15 @@ void parallelTests() {
   test(
     'a failure in a parallel sync is listed and the rest still go',
     () async {
+      final srv = <String, Set<String>>{
+        a: {'ok@x.example', 'bad@x.example'},
+      };
       final c = GlobalSubsController(
         store: _MemStore(),
-        fetch: (account, kind, cancelled) async =>
-            account == a ? {'ok@x.example', 'bad@x.example'} : <String>{},
+        fetch: (account, kind, cancelled) async => {...?srv[account]},
         apply: (account, kind, name, state) async {
           if (name.startsWith('bad')) throw StateError('no');
+          (srv[account] ??= {}).add(name);
         },
       );
       await c.load();
@@ -247,14 +265,20 @@ void parallelTests() {
 }
 
 void batchTests() {
-  GlobalSubsController make(List<String> applied) => GlobalSubsController(
-    store: _MemStore(),
-    fetch: (account, kind, cancelled) async => account == a
-        ? {'one@x.example', 'two@x.example'}
-        : {'two@x.example', 'three@x.example'},
-    apply: (account, kind, name, state) async =>
-        applied.add('$account $name $state'),
-  );
+  GlobalSubsController make(List<String> applied) {
+    final srv = <String, Set<String>>{
+      a: {'one@x.example', 'two@x.example'},
+      b: {'two@x.example', 'three@x.example'},
+    };
+    return GlobalSubsController(
+      store: _MemStore(),
+      fetch: (account, kind, cancelled) async => {...?srv[account]},
+      apply: (account, kind, name, state) async {
+        applied.add('$account $name $state');
+        state ? srv[account]!.add(name) : srv[account]!.remove(name);
+      },
+    );
+  }
 
   test(
     'removing items from all accounts skips accounts without them',
@@ -319,15 +343,20 @@ void jobsTests() {
   GlobalSubsController make({
     required Future<void> Function(String, String, bool) apply,
     Duration retryDelay = Duration.zero,
-  }) => GlobalSubsController(
-    store: _MemStore(),
-    retryDelay: retryDelay,
-    fetch: (account, kind, cancelled) async => switch (account) {
-      'src@s.example' => {'one@x.example', 'two@x.example'},
-      _ => <String>{},
-    },
-    apply: (account, kind, name, state) => apply(account, name, state),
-  );
+  }) {
+    final srv = <String, Set<String>>{
+      'src@s.example': {'one@x.example', 'two@x.example'},
+    };
+    return GlobalSubsController(
+      store: _MemStore(),
+      retryDelay: retryDelay,
+      fetch: (account, kind, cancelled) async => {...?srv[account]},
+      apply: (account, kind, name, state) async {
+        await apply(account, name, state);
+        (srv[account] ??= {}).add(name);
+      },
+    );
+  }
 
   const src = 'src@s.example';
 
@@ -403,5 +432,48 @@ void jobsTests() {
     await c.syncMissing(SubsKind.communities, [src, a], only: a);
     await first;
     expect(applied, hasLength(2));
+  });
+}
+
+void refreshTests() {
+  test('after a sync the account list is read back from the server', () async {
+    // The server quietly ignores names starting with "ghost".
+    final server = <String, Set<String>>{
+      'src@s.example': {'real@x.example', 'ghost@x.example'},
+      a: {},
+    };
+    final c = GlobalSubsController(
+      store: _MemStore(),
+      fetch: (account, kind, cancelled) async => {...?server[account]},
+      apply: (account, kind, name, state) async {
+        if (!name.startsWith('ghost')) server[account]!.add(name);
+      },
+    );
+    await c.load();
+    await c.fetchAccounts(['src@s.example', a]);
+    final before = c.snapshots[SubsKind.communities]![a]!.updated;
+    await Future<void>.delayed(const Duration(milliseconds: 2));
+    await c.syncMissing(SubsKind.communities, ['src@s.example', a], only: a);
+    final snap = c.snapshots[SubsKind.communities]![a]!;
+    expect(snap.subs, {'real@x.example'});
+    expect(snap.updated.isAfter(before), isTrue);
+  });
+
+  test('a cancelled sync does not read back', () async {
+    var fetches = 0;
+    late GlobalSubsController c;
+    c = GlobalSubsController(
+      store: _MemStore(),
+      fetch: (account, kind, cancelled) async {
+        fetches++;
+        return account == 'src@s.example' ? {'one@x.example'} : <String>{};
+      },
+      apply: (account, kind, name, state) async => c.cancel(),
+    );
+    await c.load();
+    await c.fetchAccounts(['src@s.example', a]);
+    final after = fetches;
+    await c.syncMissing(SubsKind.communities, ['src@s.example', a], only: a);
+    expect(fetches, after);
   });
 }

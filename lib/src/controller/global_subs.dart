@@ -301,6 +301,7 @@ class GlobalSubsController extends ChangeNotifier {
             if (t.$1 == account) t.$2,
         ]),
     ]);
+    await _refresh(kind, targets);
     for (final a in targets) {
       steps[a] = _cancel ? JobStep.cancelled : JobStep.done;
     }
@@ -329,11 +330,32 @@ class GlobalSubsController extends ChangeNotifier {
     await Future.wait([
       for (final e in work.entries) _worker(e.key, kind, e.value, state: state),
     ]);
+    await _refresh(kind, work.keys);
     for (final a in work.keys) {
       steps[a] = _cancel ? JobStep.cancelled : JobStep.done;
     }
     await _save();
     await _end(work.keys);
+  }
+
+  /// Reads [kind] back from each of [accounts] after changing it, so the cache
+  /// shows what the server really holds (a change can be refused quietly or
+  /// have side effects). A failed read keeps what the cache has.
+  Future<void> _refresh(SubsKind kind, Iterable<String> accounts) async {
+    if (_cancel) return;
+    await Future.wait([
+      for (final account in accounts)
+        () async {
+          try {
+            final subs = await fetch(account, kind, () => _cancel);
+            if (subs != null && !_cancel) {
+              snapshots[kind]![account] = AccountSnapshot(subs, DateTime.now());
+            }
+          } catch (_) {
+            // Keep the cache as it is.
+          }
+        }(),
+    ]);
   }
 
   static const _perAccount = 3;
