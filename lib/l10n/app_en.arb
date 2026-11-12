@@ -754,6 +754,21 @@
     }
   },
   "globalSubs_onlyDifferences": "Only differences",
+  "globalSubs_search": "Search",
+  "globalSubs_addToAll": "Add to all accounts",
+  "globalSubs_removeFromAll": "Remove from all accounts",
+  "globalSubs_addResultsToAll": "Add these {count} to all accounts",
+  "@globalSubs_addResultsToAll": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "globalSubs_removeResultsFromAll": "Remove these {count} from all accounts",
+  "@globalSubs_removeResultsFromAll": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
   "globalSubs_accountCounts": "Has {have}, missing {missing}",
   "@globalSubs_accountCounts": {
     "placeholders": {

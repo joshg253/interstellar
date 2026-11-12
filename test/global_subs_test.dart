@@ -35,6 +35,7 @@ GlobalSubsController _make(
 void main() {
   tableTests();
   parallelTests();
+  batchTests();
   test('fetching stores each account and survives a restart', () async {
     final store = _MemStore();
     final c = _make(
@@ -241,4 +242,52 @@ void parallelTests() {
       expect(c.snapshots[SubsKind.communities]![b]!.subs, {'ok@x.example'});
     },
   );
+}
+
+void batchTests() {
+  GlobalSubsController make(List<String> applied) => GlobalSubsController(
+    store: _MemStore(),
+    fetch: (account, kind, cancelled) async => account == a
+        ? {'one@x.example', 'two@x.example'}
+        : {'two@x.example', 'three@x.example'},
+    apply: (account, kind, name, state) async =>
+        applied.add('$account $name $state'),
+  );
+
+  test(
+    'removing items from all accounts skips accounts without them',
+    () async {
+      final applied = <String>[];
+      final c = make(applied);
+      await c.load();
+      await c.fetchAccounts([a, b]);
+      await c.setMany(
+        SubsKind.communities,
+        ['one@x.example', 'two@x.example'],
+        [a, b],
+        false,
+      );
+      expect(applied.toSet(), {
+        '$a one@x.example false',
+        '$a two@x.example false',
+        '$b two@x.example false',
+      });
+      expect(c.snapshots[SubsKind.communities]![a]!.subs, isEmpty);
+      expect(c.snapshots[SubsKind.communities]![b]!.subs, {'three@x.example'});
+    },
+  );
+
+  test('adding items to all accounts skips accounts that have them', () async {
+    final applied = <String>[];
+    final c = make(applied);
+    await c.load();
+    await c.fetchAccounts([a, b]);
+    await c.setMany(
+      SubsKind.communities,
+      ['one@x.example', 'two@x.example'],
+      [a, b],
+      true,
+    );
+    expect(applied, ['$b one@x.example true']);
+  });
 }

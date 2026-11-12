@@ -281,13 +281,42 @@ class GlobalSubsController extends ChangeNotifier {
     await _end();
   }
 
+  /// Makes [names] present (or absent, with [state] false) on every one of
+  /// [accounts] that is not already so, in the background.
+  Future<void> setMany(
+    SubsKind kind,
+    List<String> names,
+    List<String> accounts,
+    bool state,
+  ) async {
+    final work = {
+      for (final account in accounts)
+        account: [
+          for (final n in names)
+            if ((snapshots[kind]![account]?.subs.contains(n) ?? false) != state)
+              n,
+        ],
+    }..removeWhere((_, v) => v.isEmpty);
+    if (work.isEmpty || !_begin('sync', accounts)) return;
+    total = work.values.fold(0, (sum, v) => sum + v.length);
+    await Future.wait([
+      for (final e in work.entries) _worker(e.key, kind, e.value, state: state),
+    ]);
+    for (final a in accounts) {
+      steps[a] = _cancel ? JobStep.cancelled : JobStep.done;
+    }
+    await _save();
+    await _end();
+  }
+
   static const _perAccount = 3;
 
   Future<void> _worker(
     String account,
     SubsKind kind,
-    List<String> names,
-  ) async {
+    List<String> names, {
+    bool state = true,
+  }) async {
     steps[account] = JobStep.running;
     notifyListeners();
     var next = 0;
@@ -297,8 +326,8 @@ class GlobalSubsController extends ChangeNotifier {
           while (!_cancel && next < names.length) {
             final name = names[next++];
             try {
-              await apply(account, kind, name, true);
-              _remember(account, kind, name, true);
+              await apply(account, kind, name, state);
+              _remember(account, kind, name, state);
             } catch (_) {
               failures.add('$account: $name');
             }

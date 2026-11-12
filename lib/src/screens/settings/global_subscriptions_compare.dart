@@ -25,6 +25,7 @@ class _GlobalSubscriptionsCompareScreenState
   final Set<String> _busy = {};
   SubsKind _kind = SubsKind.communities;
   bool _onlyDifferences = true;
+  String _search = '';
 
   String _cell(String account, String name) => '$account\n$name';
 
@@ -34,6 +35,73 @@ class _GlobalSubscriptionsCompareScreenState
     setState(() => _busy.add(key));
     await subs.setOne(account, _kind, name, value);
     if (mounted) setState(() => _busy.remove(key));
+  }
+
+  /// Tapping a name: add or remove it on every account.
+  Future<void> _nameMenu(List<String> accounts, String name) async {
+    final subs = globalSubsFor(context.read<AppController>());
+    final state = await showModalBottomSheet<bool>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(title: Text(name), dense: true),
+            ListTile(
+              leading: const Icon(Icons.add),
+              title: Text(l(context).globalSubs_addToAll),
+              onTap: () => Navigator.pop(context, true),
+            ),
+            ListTile(
+              leading: const Icon(Icons.remove),
+              title: Text(l(context).globalSubs_removeFromAll),
+              onTap: () => Navigator.pop(context, false),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (state == null) return;
+    subs.setMany(_kind, [name], accounts, state);
+  }
+
+  /// Adds or removes every listed row on all accounts, after asking.
+  Future<void> _batch(
+    List<String> accounts,
+    List<String> names,
+    bool state,
+  ) async {
+    final subs = globalSubsFor(context.read<AppController>());
+    final m = subs.matrix(_kind, accounts);
+    final count = [
+      for (final a in accounts)
+        for (final n in names)
+          if (m.isSubscribed(a, n) != state) n,
+    ].length;
+    if (count == 0) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          state
+              ? l(context).globalSubs_addResultsToAll(names.length)
+              : l(context).globalSubs_removeResultsFromAll(names.length),
+        ),
+        content: Text(l(context).globalSubs_syncAll_confirm(count)),
+        actions: [
+          OutlinedButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(l(context).cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(l(context).continue_),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    subs.setMany(_kind, names, accounts, state);
   }
 
   /// Gives [only] (or every account) what the others have.
@@ -76,10 +144,14 @@ class _GlobalSubscriptionsCompareScreenState
       listenable: subs,
       builder: (context, _) {
         final matrix = subs.matrix(_kind, accounts);
+        final query = _search.trim().toLowerCase();
+        // A search shows every match, even ones all accounts already agree on.
         final rows = [
           for (final name in matrix.communities)
-            if (!_onlyDifferences ||
-                accounts.any((a) => !matrix.isSubscribed(a, name)))
+            if (query.isNotEmpty
+                ? name.toLowerCase().contains(query)
+                : !_onlyDifferences ||
+                      accounts.any((a) => !matrix.isSubscribed(a, name)))
               name,
         ];
         return Scaffold(
@@ -92,6 +164,24 @@ class _GlobalSubscriptionsCompareScreenState
                 onPressed: subs.running || matrix.missingTotal == 0
                     ? null
                     : () => _sync(accounts),
+              ),
+              PopupMenuButton<bool>(
+                enabled: !subs.running && rows.isNotEmpty,
+                onSelected: (state) => _batch(accounts, rows, state),
+                itemBuilder: (context) => [
+                  PopupMenuItem(
+                    value: true,
+                    child: Text(
+                      l(context).globalSubs_addResultsToAll(rows.length),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: false,
+                    child: Text(
+                      l(context).globalSubs_removeResultsFromAll(rows.length),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -198,6 +288,17 @@ class _GlobalSubscriptionsCompareScreenState
                       ),
                     ),
                   ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: TextField(
+                      decoration: InputDecoration(
+                        isDense: true,
+                        prefixIcon: const Icon(Icons.search),
+                        hintText: l(context).globalSubs_search,
+                      ),
+                      onChanged: (v) => setState(() => _search = v),
+                    ),
+                  ),
                   // Column headers: the same avatars as above.
                   Row(
                     children: [
@@ -224,12 +325,22 @@ class _GlobalSubscriptionsCompareScreenState
                               return Row(
                                 children: [
                                   Expanded(
-                                    child: Padding(
-                                      padding: const EdgeInsets.only(left: 16),
-                                      child: Text(
-                                        name,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
+                                    child: InkWell(
+                                      onTap: subs.running
+                                          ? null
+                                          : () => _nameMenu(accounts, name),
+                                      child: Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: Padding(
+                                          padding: const EdgeInsets.only(
+                                            left: 16,
+                                          ),
+                                          child: Text(
+                                            name,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
                                       ),
                                     ),
                                   ),
