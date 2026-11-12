@@ -37,6 +37,7 @@ void main() {
   parallelTests();
   batchTests();
   progressTests();
+  jobsTests();
   test('fetching stores each account and survives a restart', () async {
     final store = _MemStore();
     final c = _make(
@@ -91,7 +92,7 @@ void main() {
       );
       await bad.load();
       await bad.fetchAccounts([a]);
-      expect(bad.failures, ['$a: communities']);
+      expect(bad.failures.single, startsWith('$a: communities'));
       expect(bad.steps[a], JobStep.failed);
       expect(bad.snapshots[SubsKind.communities]![a]!.subs, {'one@x.example'});
       expect(bad.snapshots[SubsKind.userBlocks]![a]!.subs, {'bob@z.example'});
@@ -154,11 +155,11 @@ void main() {
     expect(c.failures, isEmpty);
   });
 
-  test('a job cannot start while another runs', () async {
+  test('a job cannot start on an account that is busy', () async {
     final c = _make(_MemStore());
     await c.load();
     final first = c.fetchAccounts([a]);
-    await c.fetchAccounts([b]);
+    await c.fetchAccounts([a, b]);
     expect(c.steps.containsKey(b), isFalse);
     await first;
   });
@@ -239,7 +240,7 @@ void parallelTests() {
       await c.load();
       await c.fetchAccounts([a, b]);
       await c.syncMissing(SubsKind.communities, [a, b]);
-      expect(c.failures, ['$b: bad@x.example']);
+      expect(c.failures.single, startsWith('$b: bad@x.example'));
       expect(c.snapshots[SubsKind.communities]![b]!.subs, {'ok@x.example'});
     },
   );
@@ -311,5 +312,96 @@ void progressTests() {
     expect(c.accountTotal[b], 3);
     expect(c.accountDone[b], 3);
     expect(c.accountTotal.containsKey(a), isFalse);
+  });
+}
+
+void jobsTests() {
+  GlobalSubsController make({
+    required Future<void> Function(String, String, bool) apply,
+    Duration retryDelay = Duration.zero,
+  }) => GlobalSubsController(
+    store: _MemStore(),
+    retryDelay: retryDelay,
+    fetch: (account, kind, cancelled) async => switch (account) {
+      'src@s.example' => {'one@x.example', 'two@x.example'},
+      _ => <String>{},
+    },
+    apply: (account, kind, name, state) => apply(account, name, state),
+  );
+
+  const src = 'src@s.example';
+
+  test('a failure is listed with its reason', () async {
+    final c = make(apply: (acc, name, state) async => throw StateError('boom'));
+    await c.load();
+    await c.fetchAccounts([src, a]);
+    await c.syncMissing(SubsKind.communities, [src, a], only: a);
+    expect(c.failures, hasLength(2));
+    expect(c.failures.first, allOf(contains(a), contains('one@x.example')));
+    expect(c.failures.first, contains('boom'));
+  });
+
+  test('a rate limited item is retried and then goes through', () async {
+    var calls = 0;
+    final c = make(
+      apply: (acc, name, state) async {
+        calls++;
+        if (calls <= 2) {
+          throw Exception('Request failed with status 429: Too Many Requests');
+        }
+      },
+    );
+    await c.load();
+    await c.fetchAccounts([src, a]);
+    await c.syncMissing(SubsKind.communities, [src, a], only: a);
+    expect(c.failures, isEmpty);
+    expect(c.snapshots[SubsKind.communities]![a]!.subs, hasLength(2));
+  });
+
+  test('an item that stays rate limited gives up and is listed', () async {
+    final c = make(
+      apply: (acc, name, state) async =>
+          throw Exception('Request failed with status 429'),
+    );
+    await c.load();
+    await c.fetchAccounts([src, a]);
+    await c.syncMissing(SubsKind.communities, [src, a], only: a);
+    expect(c.failures, hasLength(2));
+    expect(c.running, isFalse);
+  });
+
+  test('jobs on different accounts run at the same time', () async {
+    final applied = <String>[];
+    final c = make(
+      apply: (acc, name, state) async {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+        applied.add('$acc $name');
+      },
+    );
+    await c.load();
+    await c.fetchAccounts([src, a, b]);
+    final first = c.syncMissing(SubsKind.communities, [src, a, b], only: a);
+    final second = c.syncMissing(SubsKind.communities, [src, a, b], only: b);
+    expect(c.busy, containsAll([a, b]));
+    await Future.wait([first, second]);
+    expect(applied.where((e) => e.startsWith(a)), hasLength(2));
+    expect(applied.where((e) => e.startsWith(b)), hasLength(2));
+    expect(c.running, isFalse);
+  });
+
+  test('a second job on a busy account is refused', () async {
+    final applied = <String>[];
+    final c = make(
+      apply: (acc, name, state) async {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+        applied.add('$acc $name');
+      },
+    );
+    await c.load();
+    await c.fetchAccounts([src, a]);
+    final first = c.syncMissing(SubsKind.communities, [src, a], only: a);
+    await c.syncMissing(SubsKind.communities, [src, a], only: a);
+    await first;
+    expect(applied, hasLength(2));
   });
 }

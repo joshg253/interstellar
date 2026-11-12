@@ -218,6 +218,20 @@ class _GlobalSubscriptionsCompareScreenState
                                   setState(() => _kind = v.first),
                             ),
                           ),
+                          if (subs.failures.isNotEmpty)
+                            ExpansionTile(
+                              dense: true,
+                              leading: const Icon(Icons.error_outline),
+                              title: Text(
+                                l(
+                                  context,
+                                ).globalSubs_failed(subs.failures.length),
+                              ),
+                              children: [
+                                for (final f in subs.failures)
+                                  ListTile(dense: true, title: Text(f)),
+                              ],
+                            ),
                           SwitchListTile(
                             dense: true,
                             title: Text(l(context).globalSubs_onlyDifferences),
@@ -256,7 +270,7 @@ class _GlobalSubscriptionsCompareScreenState
                               ),
                               trailing: FilledButton.tonal(
                                 onPressed:
-                                    subs.running ||
+                                    subs.busy.contains(account) ||
                                         matrix.missing(account).isEmpty
                                     ? null
                                     : () => _sync(accounts, only: account),
@@ -368,7 +382,8 @@ class _GlobalSubscriptionsCompareScreenState
                                                 account,
                                                 name,
                                               ),
-                                              onChanged: subs.running
+                                              onChanged:
+                                                  subs.busy.contains(account)
                                                   ? null
                                                   : (v) => _toggle(
                                                       account,

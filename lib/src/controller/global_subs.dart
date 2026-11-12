@@ -71,7 +71,12 @@ class GlobalSubsController extends ChangeNotifier {
     required this.store,
     required this.fetch,
     required this.apply,
+    this.retryDelay = const Duration(seconds: 5),
   });
+
+  /// How long to wait before retrying an item a server rate limited; doubles
+  /// with each try.
+  final Duration retryDelay;
 
   final SubsStore store;
   final SubsFetcher fetch;
@@ -90,11 +95,12 @@ class GlobalSubsController extends ChangeNotifier {
 
   bool get hasData => snapshots.values.any((m) => m.isNotEmpty);
 
-  String? _job;
+  final Set<String> _busy = {};
 
-  /// What is running ('fetch', 'subscribe'), or null when idle.
-  String? get job => _job;
-  bool get running => _job != null;
+  /// Accounts a job is working on now. Jobs on different accounts run at the
+  /// same time; one on a busy account is refused.
+  Set<String> get busy => _busy;
+  bool get running => _busy.isNotEmpty;
 
   /// Per account state of the current or last job.
   final Map<String, JobStep> steps = {};
@@ -181,25 +187,34 @@ class GlobalSubsController extends ChangeNotifier {
     if (running) _cancel = true;
   }
 
-  bool _begin(String job, Iterable<String> accounts) {
-    if (running) return false;
-    _job = job;
-    _cancel = false;
-    failures.clear();
-    steps
-      ..clear()
-      ..addEntries(accounts.map((a) => MapEntry(a, JobStep.waiting)));
-    total = steps.length;
-    done = 0;
-    accountTotal.clear();
-    accountDone.clear();
+  bool _begin(Iterable<String> accounts) {
+    if (accounts.any(_busy.contains)) return false;
+    if (!running) {
+      _cancel = false;
+      failures.clear();
+      steps.clear();
+      total = 0;
+      done = 0;
+      accountTotal.clear();
+      accountDone.clear();
+    }
+    _busy.addAll(accounts);
+    for (final a in accounts) {
+      steps[a] = JobStep.waiting;
+    }
     notifyListeners();
     return true;
   }
 
-  Future<void> _end() async {
-    _job = null;
+  Future<void> _end(Iterable<String> accounts) async {
+    _busy.removeAll(accounts);
     notifyListeners();
+  }
+
+  /// The first line of an error, short enough to list.
+  static String why(Object e) {
+    final text = e.toString().replaceFirst('Exception: ', '').split('\n').first;
+    return text.length > 140 ? '${text.substring(0, 140)}…' : text;
   }
 
   /// Fetches the lists [kinds] of [accounts] from their servers. A list that
@@ -208,7 +223,8 @@ class GlobalSubsController extends ChangeNotifier {
     List<String> accounts, {
     List<SubsKind> kinds = SubsKind.values,
   }) async {
-    if (!_begin('fetch', accounts)) return;
+    if (!_begin(accounts)) return;
+    total += accounts.length;
     await Future.wait([
       for (final account in accounts)
         () async {
@@ -227,9 +243,9 @@ class GlobalSubsController extends ChangeNotifier {
                   DateTime.now(),
                 );
               }
-            } catch (_) {
+            } catch (e) {
               failed = true;
-              failures.add('$account: ${kind.name}');
+              failures.add('$account: ${kind.name} — ${why(e)}');
             }
             accountDone[account] = accountDone[account]! + 1;
             notifyListeners();
@@ -244,7 +260,7 @@ class GlobalSubsController extends ChangeNotifier {
         }(),
     ]);
     await _save();
-    await _end();
+    await _end(accounts);
   }
 
   /// Saves the merged list of each kind the cache holds as the local master.
@@ -273,8 +289,9 @@ class GlobalSubsController extends ChangeNotifier {
         if (only == null || a == only)
           for (final c in m.missing(a)) (a, c),
     ];
-    if (todo.isEmpty || !_begin('sync', accounts)) return;
-    total = todo.length;
+    final targets = {for (final t in todo) t.$1};
+    if (todo.isEmpty || !_begin(targets)) return;
+    total += todo.length;
     // A few at a time per account (a server's rate limit is per account);
     // different accounts run side by side.
     await Future.wait([
@@ -284,11 +301,11 @@ class GlobalSubsController extends ChangeNotifier {
             if (t.$1 == account) t.$2,
         ]),
     ]);
-    for (final a in accounts) {
+    for (final a in targets) {
       steps[a] = _cancel ? JobStep.cancelled : JobStep.done;
     }
     await _save();
-    await _end();
+    await _end(targets);
   }
 
   /// Makes [names] present (or absent, with [state] false) on every one of
@@ -307,16 +324,16 @@ class GlobalSubsController extends ChangeNotifier {
               n,
         ],
     }..removeWhere((_, v) => v.isEmpty);
-    if (work.isEmpty || !_begin('sync', accounts)) return;
-    total = work.values.fold(0, (sum, v) => sum + v.length);
+    if (work.isEmpty || !_begin(work.keys)) return;
+    total += work.values.fold(0, (sum, v) => sum + v.length);
     await Future.wait([
       for (final e in work.entries) _worker(e.key, kind, e.value, state: state),
     ]);
-    for (final a in accounts) {
+    for (final a in work.keys) {
       steps[a] = _cancel ? JobStep.cancelled : JobStep.done;
     }
     await _save();
-    await _end();
+    await _end(work.keys);
   }
 
   static const _perAccount = 3;
@@ -338,10 +355,10 @@ class GlobalSubsController extends ChangeNotifier {
           while (!_cancel && next < names.length) {
             final name = names[next++];
             try {
-              await apply(account, kind, name, state);
+              await _applyWithRetry(account, kind, name, state);
               _remember(account, kind, name, state);
-            } catch (_) {
-              failures.add('$account: $name');
+            } catch (e) {
+              failures.add('$account: $name — ${why(e)}');
             }
             accountDone[account] = accountDone[account]! + 1;
             done++;
@@ -349,6 +366,25 @@ class GlobalSubsController extends ChangeNotifier {
           }
         }(),
     ]);
+  }
+
+  /// Tries again, after a growing wait, when the server says it is being asked
+  /// too often (HTTP 429).
+  Future<void> _applyWithRetry(
+    String account,
+    SubsKind kind,
+    String name,
+    bool state,
+  ) async {
+    for (var attempt = 0; ; attempt++) {
+      try {
+        return await apply(account, kind, name, state);
+      } catch (e) {
+        final limited = e.toString().contains('status 429');
+        if (!limited || attempt >= 4 || _cancel) rethrow;
+        await Future<void>.delayed(retryDelay * (1 << attempt));
+      }
+    }
   }
 
   void _remember(String account, SubsKind kind, String name, bool state) {
