@@ -755,6 +755,29 @@
   },
   "globalSubs_onlyDifferences": "Only differences",
   "globalSubs_search": "Search",
+  "globalSubs_matchAnother": "Make this match another account…",
+  "globalSubs_copyToOthers": "Replace the other accounts' lists with this one",
+  "globalSubs_clearList": "Clear this list ({count})",
+  "@globalSubs_clearList": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "globalSubs_pickSource": "Copy from which account?",
+  "globalSubs_replaceConfirm": "Add {adds} and remove {removes} across {accounts} account(s)? The result is a list identical to the source.",
+  "@globalSubs_replaceConfirm": {
+    "placeholders": {
+      "adds": { "type": "int" },
+      "removes": { "type": "int" },
+      "accounts": { "type": "int" }
+    }
+  },
+  "globalSubs_clearConfirm": "Remove all {count} entries of this list from this account?",
+  "@globalSubs_clearConfirm": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
   "globalSubs_addToAll": "Add to all accounts",
   "globalSubs_removeFromAll": "Remove from all accounts",
   "globalSubs_addResultsToAll": "Add these {count} to all accounts",

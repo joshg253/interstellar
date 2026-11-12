@@ -201,6 +201,8 @@ class GlobalSubsController extends ChangeNotifier {
     _busy.addAll(accounts);
     for (final a in accounts) {
       steps[a] = JobStep.waiting;
+      accountTotal.remove(a);
+      accountDone.remove(a);
     }
     notifyListeners();
     return true;
@@ -358,6 +360,54 @@ class GlobalSubsController extends ChangeNotifier {
     ]);
   }
 
+  /// What it takes to make each of [targets] hold exactly what [source] holds
+  /// in the list [kind]. Accounts that already match are left out.
+  Map<String, ({Set<String> add, Set<String> remove})> replacePlan(
+    SubsKind kind,
+    String source,
+    Iterable<String> targets,
+  ) {
+    final from = snapshots[kind]![source]?.subs ?? <String>{};
+    return {
+      for (final t in targets)
+        if (t != source)
+          if (snapshots[kind]![t] != null)
+            t: (
+              add: from.difference(snapshots[kind]![t]!.subs),
+              remove: snapshots[kind]![t]!.subs.difference(from),
+            ),
+    }..removeWhere((_, v) => v.add.isEmpty && v.remove.isEmpty);
+  }
+
+  /// Makes each of [targets] match [source] exactly: adds what it lacks and
+  /// removes what it has beyond it. The source is not changed.
+  Future<void> replaceLists(
+    SubsKind kind,
+    String source,
+    List<String> targets,
+  ) async {
+    final plan = replacePlan(kind, source, targets);
+    if (plan.isEmpty || !_begin(plan.keys)) return;
+    for (final e in plan.entries) {
+      accountTotal[e.key] = e.value.add.length + e.value.remove.length;
+      accountDone[e.key] = 0;
+      total += accountTotal[e.key]!;
+    }
+    await Future.wait([
+      for (final e in plan.entries)
+        () async {
+          await _worker(e.key, kind, e.value.add.toList());
+          await _worker(e.key, kind, e.value.remove.toList(), state: false);
+        }(),
+    ]);
+    await _refresh(kind, plan.keys);
+    for (final a in plan.keys) {
+      steps[a] = _cancel ? JobStep.cancelled : JobStep.done;
+    }
+    await _save();
+    await _end(plan.keys);
+  }
+
   static const _perAccount = 3;
 
   Future<void> _worker(
@@ -367,8 +417,9 @@ class GlobalSubsController extends ChangeNotifier {
     bool state = true,
   }) async {
     steps[account] = JobStep.running;
-    accountTotal[account] = names.length;
-    accountDone[account] = 0;
+    // A caller doing several passes sets the totals up front.
+    accountTotal.putIfAbsent(account, () => names.length);
+    accountDone.putIfAbsent(account, () => 0);
     notifyListeners();
     var next = 0;
     await Future.wait([

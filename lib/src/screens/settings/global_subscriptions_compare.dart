@@ -37,6 +37,89 @@ class _GlobalSubscriptionsCompareScreenState
     if (mounted) setState(() => _busy.remove(key));
   }
 
+  /// Makes [account] match the account the user picks.
+  Future<void> _matchAnother(List<String> accounts, String account) async {
+    final source = await showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: Text(l(context).globalSubs_pickSource),
+        children: [
+          for (final a in accounts)
+            if (a != account)
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(context, a),
+                child: Row(
+                  spacing: 8,
+                  children: [
+                    AccountAvatar(a),
+                    Flexible(child: Text(a, overflow: TextOverflow.ellipsis)),
+                  ],
+                ),
+              ),
+        ],
+      ),
+    );
+    if (source == null || !mounted) return;
+    await _confirmReplace(source, [account]);
+  }
+
+  /// Makes every account in [targets] (but the source) match [source], after
+  /// saying how much that adds and removes.
+  Future<void> _confirmReplace(String source, List<String> targets) async {
+    final subs = globalSubsFor(context.read<AppController>());
+    final plan = subs.replacePlan(_kind, source, targets);
+    if (plan.isEmpty) return;
+    final adds = plan.values.fold(0, (n, v) => n + v.add.length);
+    final removes = plan.values.fold(0, (n, v) => n + v.remove.length);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(source),
+        content: Text(
+          l(context).globalSubs_replaceConfirm(adds, removes, plan.length),
+        ),
+        actions: [
+          OutlinedButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(l(context).cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(l(context).continue_),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    subs.replaceLists(_kind, source, targets);
+  }
+
+  /// Removes every entry of the list from one account, after asking.
+  Future<void> _clear(String account) async {
+    final subs = globalSubsFor(context.read<AppController>());
+    final names = [...?subs.snapshots[_kind]![account]?.subs];
+    if (names.isEmpty) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(account),
+        content: Text(l(context).globalSubs_clearConfirm(names.length)),
+        actions: [
+          OutlinedButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(l(context).cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(l(context).continue_),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    subs.setMany(_kind, names, [account], false);
+  }
+
   /// Tapping a name: add or remove it on every account.
   Future<void> _nameMenu(List<String> accounts, String name) async {
     final subs = globalSubsFor(context.read<AppController>());
@@ -268,17 +351,62 @@ class _GlobalSubscriptionsCompareScreenState
                                         matrix.missing(account).length,
                                       ),
                               ),
-                              trailing: FilledButton.tonal(
-                                onPressed:
-                                    subs.busy.contains(account) ||
-                                        matrix.missing(account).isEmpty
-                                    ? null
-                                    : () => _sync(accounts, only: account),
-                                child: Text(
-                                  l(context).globalSubs_addMissing(
-                                    matrix.missing(account).length,
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  FilledButton.tonal(
+                                    onPressed:
+                                        subs.busy.contains(account) ||
+                                            matrix.missing(account).isEmpty
+                                        ? null
+                                        : () => _sync(accounts, only: account),
+                                    child: Text(
+                                      l(context).globalSubs_addMissing(
+                                        matrix.missing(account).length,
+                                      ),
+                                    ),
                                   ),
-                                ),
+                                  PopupMenuButton<String>(
+                                    enabled: !subs.busy.contains(account),
+                                    onSelected: (v) => switch (v) {
+                                      'match' => _matchAnother(
+                                        accounts,
+                                        account,
+                                      ),
+                                      'copy' => _confirmReplace(
+                                        account,
+                                        accounts,
+                                      ),
+                                      _ => _clear(account),
+                                    },
+                                    itemBuilder: (context) => [
+                                      PopupMenuItem(
+                                        value: 'match',
+                                        child: Text(
+                                          l(context).globalSubs_matchAnother,
+                                        ),
+                                      ),
+                                      PopupMenuItem(
+                                        value: 'copy',
+                                        child: Text(
+                                          l(context).globalSubs_copyToOthers,
+                                        ),
+                                      ),
+                                      PopupMenuItem(
+                                        value: 'clear',
+                                        child: Text(
+                                          l(context).globalSubs_clearList(
+                                            subs
+                                                    .snapshots[_kind]![account]
+                                                    ?.subs
+                                                    .length ??
+                                                0,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
                               ),
                             ),
                             globalSubsAccountBar(subs, account),

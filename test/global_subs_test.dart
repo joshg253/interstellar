@@ -51,6 +51,7 @@ void main() {
   progressTests();
   jobsTests();
   refreshTests();
+  mirrorTests();
   test('fetching stores each account and survives a restart', () async {
     final store = _MemStore();
     final c = _make(
@@ -475,5 +476,77 @@ void refreshTests() {
     final after = fetches;
     await c.syncMissing(SubsKind.communities, ['src@s.example', a], only: a);
     expect(fetches, after);
+  });
+}
+
+void mirrorTests() {
+  const clean = 'clean@l.example';
+  const messy = 'messy@l.example';
+  const third = 'third@m.example';
+
+  GlobalSubsController make(List<String> applied) {
+    final srv = <String, Set<String>>{
+      clean: {'keep@x.example', 'new@x.example'},
+      messy: {'keep@x.example', 'junk1@x.example', 'junk2@x.example'},
+      third: {'junk3@x.example'},
+    };
+    return GlobalSubsController(
+      store: _MemStore(),
+      fetch: (account, kind, cancelled) async => {...?srv[account]},
+      apply: (account, kind, name, state) async {
+        applied.add('$account $name $state');
+        state ? srv[account]!.add(name) : srv[account]!.remove(name);
+      },
+    );
+  }
+
+  test('the plan lists what to add and what to remove', () async {
+    final c = make([]);
+    await c.load();
+    await c.fetchAccounts([clean, messy, third]);
+    final plan = c.replacePlan(SubsKind.communities, clean, [messy, third]);
+    expect(plan[messy]!.add, {'new@x.example'});
+    expect(plan[messy]!.remove, {'junk1@x.example', 'junk2@x.example'});
+    expect(plan[third]!.add, {'keep@x.example', 'new@x.example'});
+    expect(plan[third]!.remove, {'junk3@x.example'});
+    expect(plan.containsKey(clean), isFalse);
+  });
+
+  test(
+    'replacing makes the others match the source and leaves it alone',
+    () async {
+      final applied = <String>[];
+      final c = make(applied);
+      await c.load();
+      await c.fetchAccounts([clean, messy, third]);
+      await c.replaceLists(SubsKind.communities, clean, [messy, third]);
+      final snaps = c.snapshots[SubsKind.communities]!;
+      expect(snaps[messy]!.subs, {'keep@x.example', 'new@x.example'});
+      expect(snaps[third]!.subs, {'keep@x.example', 'new@x.example'});
+      expect(snaps[clean]!.subs, {'keep@x.example', 'new@x.example'});
+      expect(applied.any((e) => e.startsWith(clean)), isFalse);
+      expect(c.failures, isEmpty);
+      expect(c.running, isFalse);
+    },
+  );
+
+  test('an account that already matches is not touched', () async {
+    final applied = <String>[];
+    final c = make(applied);
+    await c.load();
+    await c.fetchAccounts([clean, messy, third]);
+    await c.replaceLists(SubsKind.communities, clean, [messy]);
+    applied.clear();
+    await c.replaceLists(SubsKind.communities, clean, [messy]);
+    expect(applied, isEmpty);
+  });
+
+  test('progress counts both the adds and the removes', () async {
+    final c = make([]);
+    await c.load();
+    await c.fetchAccounts([clean, messy, third]);
+    await c.replaceLists(SubsKind.communities, clean, [messy]);
+    expect(c.accountTotal[messy], 3);
+    expect(c.accountDone[messy], 3);
   });
 }
