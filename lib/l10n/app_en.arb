@@ -755,13 +755,18 @@
   },
   "globalSubs_onlyDifferences": "Only differences",
   "globalSubs_search": "Search",
+  "globalSubs_replaceSubs": "Replace subscriptions with the global list",
+  "globalSubs_replaceBlocks": "Replace blocks with the global list",
+  "globalSubs_replaceAll": "Replace everything with the global list",
+  "globalSubs_noGlobalList": "Make the global list first: Edit the global list, then Rebuild from accounts.",
   "globalSubs_editMaster": "Edit the global list",
   "globalSubs_editMaster_help": "Edit one saved list, then make chosen accounts match it",
   "globalSubs_masterTitle": "Global list",
   "globalSubs_masterNone": "No global list yet. Fetch from the servers, then rebuild it from the accounts.",
-  "globalSubs_masterInfo": "{count} entries, updated {when}",
+  "globalSubs_masterInfo": "{kind}: {count} entries, updated {when}",
   "@globalSubs_masterInfo": {
     "placeholders": {
+      "kind": { "type": "String" },
       "count": { "type": "int" },
       "when": { "type": "String" }
     }

@@ -4,10 +4,10 @@ import 'package:interstellar/src/controller/controller.dart';
 import 'package:interstellar/src/controller/global_subs.dart';
 import 'package:interstellar/src/screens/settings/global_subscriptions.dart';
 import 'package:interstellar/src/utils/utils.dart';
-import 'package:interstellar/src/widgets/account_avatar.dart';
 import 'package:provider/provider.dart';
 
-/// The one saved list per kind: edit it, then make accounts match it.
+/// The one saved list (subscriptions, blocked communities, blocked users) to
+/// edit. Accounts are made to match it from the main screen.
 @RoutePage()
 class GlobalSubscriptionsListScreen extends StatefulWidget {
   const GlobalSubscriptionsListScreen({super.key});
@@ -19,9 +19,8 @@ class GlobalSubscriptionsListScreen extends StatefulWidget {
 
 class _GlobalSubscriptionsListScreenState
     extends State<GlobalSubscriptionsListScreen> {
-  SubsKind _kind = SubsKind.communities;
   String _search = '';
-  final Set<String> _selected = {};
+  final Set<(SubsKind, String)> _selected = {};
 
   Future<bool> _ask(String title, String text) async =>
       await showDialog<bool>(
@@ -44,68 +43,48 @@ class _GlobalSubscriptionsListScreenState
       false;
 
   Future<void> _rebuild(GlobalSubsController subs) async {
-    if (subs.master[_kind] != null &&
+    if (subs.master.isNotEmpty &&
         !await _ask(
           l(context).globalSubs_rebuild,
           l(context).globalSubs_rebuildConfirm,
         )) {
       return;
     }
-    await subs.rebuildMaster(_kind);
+    await subs.rebuildAllMasters();
     if (mounted) setState(_selected.clear);
   }
 
   Future<void> _add(GlobalSubsController subs) async {
     final controller = TextEditingController();
+    var kind = SubsKind.communities;
     final name = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(l(context).globalSubs_addEntry),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(hintText: 'name@server.example'),
-        ),
-        actions: [
-          OutlinedButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(l(context).cancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, controller.text.trim()),
-            child: Text(l(context).continue_),
-          ),
-        ],
-      ),
-    );
-    // A name needs its server: the same name can be on many.
-    if (name == null || !name.contains('@') || name.startsWith('@')) return;
-    await subs.editMaster(_kind, add: [name.toLowerCase()]);
-  }
-
-  Future<void> _apply(GlobalSubsController subs, List<String> accounts) async {
-    final chosen = {...accounts};
-    final targets = await showDialog<List<String>>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setLocal) => AlertDialog(
-          title: Text(l(context).globalSubs_applyTo),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (final a in accounts)
-                  CheckboxListTile(
-                    dense: true,
-                    secondary: AccountAvatar(a),
-                    title: Text(a, overflow: TextOverflow.ellipsis),
-                    value: chosen.contains(a),
-                    onChanged: (v) => setLocal(
-                      () => (v ?? false) ? chosen.add(a) : chosen.remove(a),
+          title: Text(l(context).globalSubs_addEntry),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButton<SubsKind>(
+                isExpanded: true,
+                value: kind,
+                items: [
+                  for (final k in SubsKind.values)
+                    DropdownMenuItem(
+                      value: k,
+                      child: Text(globalSubsKindLabel(context, k)),
                     ),
-                  ),
-              ],
-            ),
+                ],
+                onChanged: (v) => setLocal(() => kind = v ?? kind),
+              ),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  hintText: 'name@server.example',
+                ),
+              ),
+            ],
           ),
           actions: [
             OutlinedButton(
@@ -113,47 +92,40 @@ class _GlobalSubscriptionsListScreenState
               child: Text(l(context).cancel),
             ),
             FilledButton(
-              onPressed: () => Navigator.pop(context, chosen.toList()),
+              onPressed: () => Navigator.pop(context, controller.text.trim()),
               child: Text(l(context).continue_),
             ),
           ],
         ),
       ),
     );
-    if (targets == null || targets.isEmpty || !mounted) return;
-    final plan = subs.masterPlan(_kind, targets);
-    if (plan.isEmpty) return;
-    final adds = plan.values.fold(0, (n, v) => n + v.add.length);
-    final removes = plan.values.fold(0, (n, v) => n + v.remove.length);
-    if (!await _ask(
-      l(context).globalSubs_applyTo,
-      l(context).globalSubs_replaceConfirm(adds, removes, plan.length),
-    )) {
-      return;
-    }
-    subs.applyMaster(_kind, targets);
+    // A name needs its server: the same name can be on many.
+    if (name == null || !name.contains('@') || name.startsWith('@')) return;
+    await subs.editMaster(kind, add: [name.toLowerCase()]);
   }
 
   @override
   Widget build(BuildContext context) {
-    final ac = context.read<AppController>();
-    final subs = globalSubsFor(ac);
-    final accounts = [
-      for (final a in globalSubsAccounts(ac))
-        if (subs.snapshots[_kind]!.containsKey(a)) a,
-    ];
+    final subs = globalSubsFor(context.read<AppController>());
 
     return ListenableBuilder(
       listenable: subs,
       builder: (context, _) {
-        final master = subs.master[_kind];
         final query = _search.trim().toLowerCase();
-        final rows = [
-          for (final n in [
-            ...?master,
-          ]..sort((x, y) => x.toLowerCase().compareTo(y.toLowerCase())))
-            if (query.isEmpty || n.toLowerCase().contains(query)) n,
-        ];
+        // A header row per list, then its entries.
+        final rows = <(SubsKind, String?)>[];
+        for (final kind in SubsKind.values) {
+          final names = [...?subs.master[kind]]
+            ..sort((x, y) => x.toLowerCase().compareTo(y.toLowerCase()));
+          final shown = [
+            for (final n in names)
+              if (query.isEmpty || n.toLowerCase().contains(query)) n,
+          ];
+          if (subs.master[kind] == null) continue;
+          rows
+            ..add((kind, null))
+            ..addAll([for (final n in shown) (kind, n)]);
+        }
         return Scaffold(
           appBar: AppBar(
             title: Text(l(context).globalSubs_masterTitle),
@@ -165,7 +137,15 @@ class _GlobalSubscriptionsListScreenState
                     l(context).globalSubs_removeSelected(_selected.length),
                   ),
                   onPressed: () async {
-                    await subs.editMaster(_kind, remove: _selected);
+                    for (final kind in SubsKind.values) {
+                      await subs.editMaster(
+                        kind,
+                        remove: [
+                          for (final (k, n) in _selected)
+                            if (k == kind) n,
+                        ],
+                      );
+                    }
                     if (mounted) setState(_selected.clear);
                   },
                 ),
@@ -176,71 +156,23 @@ class _GlobalSubscriptionsListScreenState
               constraints: const BoxConstraints(maxWidth: 640),
               child: Column(
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.all(8),
-                    child: SegmentedButton<SubsKind>(
-                      showSelectedIcon: false,
-                      segments: [
-                        for (final kind in SubsKind.values)
-                          ButtonSegment(
-                            value: kind,
-                            label: Text(
-                              globalSubsKindLabel(context, kind),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                      ],
-                      selected: {_kind},
-                      onSelectionChanged: (v) => setState(() {
-                        _kind = v.first;
-                        _selected.clear();
-                      }),
-                    ),
-                  ),
-                  ListTile(
-                    dense: true,
-                    title: Text(
-                      master == null
-                          ? l(context).globalSubs_masterNone
-                          : l(context).globalSubs_masterInfo(
-                              master.length,
-                              globalSubsWhen(subs.masterUpdated[_kind]!),
-                            ),
-                    ),
-                  ),
                   Wrap(
                     spacing: 8,
                     children: [
                       OutlinedButton(
-                        onPressed: subs.running || accounts.isEmpty
+                        onPressed: subs.running || !subs.hasData
                             ? null
                             : () => _rebuild(subs),
                         child: Text(l(context).globalSubs_rebuild),
                       ),
                       OutlinedButton(
-                        onPressed: () => _add(subs),
-                        child: Text(l(context).globalSubs_addEntry),
-                      ),
-                      FilledButton(
-                        onPressed:
-                            subs.running || master == null || accounts.isEmpty
+                        onPressed: subs.master.isEmpty
                             ? null
-                            : () => _apply(subs, accounts),
-                        child: Text(l(context).globalSubs_applyTo),
+                            : () => _add(subs),
+                        child: Text(l(context).globalSubs_addEntry),
                       ),
                     ],
                   ),
-                  if (subs.running)
-                    ListTile(
-                      dense: true,
-                      title: Text(
-                        l(context).globalSubs_running(subs.done, subs.total),
-                      ),
-                      trailing: OutlinedButton(
-                        onPressed: subs.cancel,
-                        child: Text(l(context).cancel),
-                      ),
-                    ),
                   Padding(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 12,
@@ -256,28 +188,51 @@ class _GlobalSubscriptionsListScreenState
                     ),
                   ),
                   Expanded(
-                    child: ListView.builder(
-                      itemCount: rows.length,
-                      itemExtent: 44,
-                      itemBuilder: (context, i) {
-                        final name = rows[i];
-                        return CheckboxListTile(
-                          dense: true,
-                          controlAffinity: ListTileControlAffinity.leading,
-                          title: Text(
-                            name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                    child: rows.isEmpty
+                        ? Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Text(l(context).globalSubs_masterNone),
+                            ),
+                          )
+                        : ListView.builder(
+                            itemCount: rows.length,
+                            itemExtent: 44,
+                            itemBuilder: (context, i) {
+                              final (kind, name) = rows[i];
+                              if (name == null) {
+                                return ListTile(
+                                  dense: true,
+                                  tileColor: Theme.of(
+                                    context,
+                                  ).colorScheme.surfaceContainerHighest,
+                                  title: Text(
+                                    l(context).globalSubs_masterInfo(
+                                      globalSubsKindLabel(context, kind),
+                                      subs.master[kind]!.length,
+                                      globalSubsWhen(subs.masterUpdated[kind]!),
+                                    ),
+                                  ),
+                                );
+                              }
+                              return CheckboxListTile(
+                                dense: true,
+                                controlAffinity:
+                                    ListTileControlAffinity.leading,
+                                title: Text(
+                                  name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                value: _selected.contains((kind, name)),
+                                onChanged: (v) => setState(
+                                  () => (v ?? false)
+                                      ? _selected.add((kind, name))
+                                      : _selected.remove((kind, name)),
+                                ),
+                              );
+                            },
                           ),
-                          value: _selected.contains(name),
-                          onChanged: (v) => setState(
-                            () => (v ?? false)
-                                ? _selected.add(name)
-                                : _selected.remove(name),
-                          ),
-                        );
-                      },
-                    ),
                   ),
                 ],
               ),

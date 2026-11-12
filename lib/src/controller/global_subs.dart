@@ -287,6 +287,18 @@ class GlobalSubsController extends ChangeNotifier {
     await _save();
   }
 
+  /// Rebuilds the global list of every kind that has been fetched.
+  Future<void> rebuildAllMasters() async {
+    final now = DateTime.now();
+    for (final kind in SubsKind.values) {
+      if (snapshots[kind]!.isEmpty) continue;
+      master[kind] = merged(kind);
+      masterUpdated[kind] = now;
+    }
+    notifyListeners();
+    await _save();
+  }
+
   /// Edits the global list of [kind]: adds and removes entries.
   Future<void> editMaster(
     SubsKind kind, {
@@ -420,37 +432,53 @@ class GlobalSubsController extends ChangeNotifier {
     SubsKind kind,
     String source,
     List<String> targets,
-  ) => _runPlan(kind, replacePlan(kind, source, targets));
+  ) => _runPlans({kind: replacePlan(kind, source, targets)});
 
-  /// Makes each of [targets] match the saved global list exactly.
-  Future<void> applyMaster(SubsKind kind, List<String> targets) =>
-      master[kind] == null
-      ? Future.value()
-      : _runPlan(kind, masterPlan(kind, targets));
+  /// Makes each of [targets] match the saved global list exactly, for each of
+  /// [kinds] that has one, as a single job.
+  Future<void> applyMaster(Iterable<SubsKind> kinds, List<String> targets) =>
+      _runPlans({
+        for (final kind in kinds)
+          if (master[kind] != null) kind: masterPlan(kind, targets),
+      });
 
-  Future<void> _runPlan(
-    SubsKind kind,
-    Map<String, ({Set<String> add, Set<String> remove})> plan,
+  Future<void> _runPlans(
+    Map<SubsKind, Map<String, ({Set<String> add, Set<String> remove})>> plans,
   ) async {
-    if (plan.isEmpty || !_begin(plan.keys)) return;
-    for (final e in plan.entries) {
-      accountTotal[e.key] = e.value.add.length + e.value.remove.length;
-      accountDone[e.key] = 0;
-      total += accountTotal[e.key]!;
+    final accounts = {for (final p in plans.values) ...p.keys};
+    if (accounts.isEmpty || !_begin(accounts)) return;
+    for (final plan in plans.values) {
+      for (final e in plan.entries) {
+        final n = e.value.add.length + e.value.remove.length;
+        accountTotal[e.key] = (accountTotal[e.key] ?? 0) + n;
+        accountDone[e.key] = 0;
+        total += n;
+      }
     }
     await Future.wait([
-      for (final e in plan.entries)
+      for (final account in accounts)
         () async {
-          await _worker(e.key, kind, e.value.add.toList());
-          await _worker(e.key, kind, e.value.remove.toList(), state: false);
+          for (final entry in plans.entries) {
+            final plan = entry.value[account];
+            if (plan == null) continue;
+            await _worker(account, entry.key, plan.add.toList());
+            await _worker(
+              account,
+              entry.key,
+              plan.remove.toList(),
+              state: false,
+            );
+          }
         }(),
     ]);
-    await _refresh(kind, plan.keys);
-    for (final a in plan.keys) {
+    for (final entry in plans.entries) {
+      await _refresh(entry.key, entry.value.keys);
+    }
+    for (final a in accounts) {
       steps[a] = _cancel ? JobStep.cancelled : JobStep.done;
     }
     await _save();
-    await _end(plan.keys);
+    await _end(accounts);
   }
 
   static const _perAccount = 3;

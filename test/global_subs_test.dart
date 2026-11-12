@@ -53,6 +53,7 @@ void main() {
   refreshTests();
   mirrorTests();
   masterTests();
+  simpleTests();
   test('fetching stores each account and survives a restart', () async {
     final store = _MemStore();
     final c = _make(
@@ -608,7 +609,7 @@ void masterTests() {
     await c.fetchAccounts([a, b]);
     await c.rebuildMaster(SubsKind.communities);
     await c.editMaster(SubsKind.communities, remove: ['junk@x.example']);
-    await c.applyMaster(SubsKind.communities, [a, b]);
+    await c.applyMaster([SubsKind.communities], [a, b]);
     final snaps = c.snapshots[SubsKind.communities]!;
     expect(snaps[a]!.subs, {'one@x.example', 'two@y.example'});
     expect(snaps[b]!.subs, {'one@x.example', 'two@y.example'});
@@ -621,7 +622,7 @@ void masterTests() {
     final c = make(_MemStore(), applied);
     await c.load();
     await c.fetchAccounts([a, b]);
-    await c.applyMaster(SubsKind.communities, [a, b]);
+    await c.applyMaster([SubsKind.communities], [a, b]);
     expect(applied, isEmpty);
   });
 
@@ -640,4 +641,89 @@ void masterTests() {
       expect(plan[b]!.remove, isEmpty);
     },
   );
+}
+
+void simpleTests() {
+  GlobalSubsController make(List<String> applied, {void Function()? onApply}) {
+    final srv = {
+      SubsKind.communities: <String, Set<String>>{
+        a: {'c1@x.example', 'cjunk@x.example'},
+        b: {'c2@y.example'},
+      },
+      SubsKind.communityBlocks: <String, Set<String>>{
+        a: {'b1@x.example'},
+        b: {'bjunk@y.example'},
+      },
+      SubsKind.userBlocks: <String, Set<String>>{
+        a: {'u1@x.example'},
+        b: <String>{},
+      },
+    };
+    return GlobalSubsController(
+      store: _MemStore(),
+      fetch: (account, kind, cancelled) async => {...?srv[kind]![account]},
+      apply: (account, kind, name, state) async {
+        onApply?.call();
+        applied.add('$account ${kind.name} $name $state');
+        final set = srv[kind]!.putIfAbsent(account, () => {});
+        state ? set.add(name) : set.remove(name);
+      },
+    );
+  }
+
+  test('rebuilding all lists at once fills every kind', () async {
+    final c = make([]);
+    await c.load();
+    await c.fetchAccounts([a, b]);
+    await c.rebuildAllMasters();
+    expect(c.master[SubsKind.communities], {
+      'c1@x.example',
+      'cjunk@x.example',
+      'c2@y.example',
+    });
+    expect(c.master[SubsKind.userBlocks], {'u1@x.example'});
+    expect(c.master.keys, containsAll(SubsKind.values));
+  });
+
+  test('replacing everything makes an account match all three lists', () async {
+    final c = make([]);
+    await c.load();
+    await c.fetchAccounts([a, b]);
+    await c.rebuildAllMasters();
+    await c.editMaster(SubsKind.communities, remove: ['cjunk@x.example']);
+    await c.editMaster(SubsKind.communityBlocks, remove: ['bjunk@y.example']);
+    await c.applyMaster(SubsKind.values, [b]);
+    expect(c.snapshots[SubsKind.communities]![b]!.subs, {
+      'c1@x.example',
+      'c2@y.example',
+    });
+    expect(c.snapshots[SubsKind.communityBlocks]![b]!.subs, {'b1@x.example'});
+    expect(c.snapshots[SubsKind.userBlocks]![b]!.subs, {'u1@x.example'});
+    expect(c.running, isFalse);
+    expect(c.failures, isEmpty);
+  });
+
+  test('replacing only the blocks leaves the subscriptions alone', () async {
+    final applied = <String>[];
+    final c = make(applied);
+    await c.load();
+    await c.fetchAccounts([a, b]);
+    await c.rebuildAllMasters();
+    await c.applyMaster([SubsKind.communityBlocks, SubsKind.userBlocks], [b]);
+    expect(applied.where((e) => e.contains('communities ')), isEmpty);
+    expect(applied, isNotEmpty);
+  });
+
+  test('cancelling stops the later lists too', () async {
+    late GlobalSubsController c;
+    final applied = <String>[];
+    c = make(applied, onApply: () => c.cancel());
+    await c.load();
+    await c.fetchAccounts([a, b]);
+    await c.rebuildAllMasters();
+    applied.clear();
+    await c.applyMaster(SubsKind.values, [b]);
+    expect(applied.length, lessThanOrEqualTo(3));
+    expect(c.running, isFalse);
+  });
 }
