@@ -97,47 +97,97 @@ class _GlobalSubscriptionsCompareScreenState
           ),
           body: Column(
             children: [
-              Padding(
-                padding: const EdgeInsets.all(8),
-                child: SegmentedButton<SubsKind>(
-                  showSelectedIcon: false,
-                  segments: [
-                    for (final kind in SubsKind.values)
-                      ButtonSegment(
-                        value: kind,
-                        label: Text(
-                          globalSubsKindLabel(context, kind),
-                          overflow: TextOverflow.ellipsis,
+              // Scrolls on its own so the table keeps room with many accounts.
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.sizeOf(context).height * 0.4,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(8),
+                        child: SegmentedButton<SubsKind>(
+                          showSelectedIcon: false,
+                          segments: [
+                            for (final kind in SubsKind.values)
+                              ButtonSegment(
+                                value: kind,
+                                label: Text(
+                                  globalSubsKindLabel(context, kind),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                          ],
+                          selected: {_kind},
+                          onSelectionChanged: (v) =>
+                              setState(() => _kind = v.first),
                         ),
                       ),
-                  ],
-                  selected: {_kind},
-                  onSelectionChanged: (v) => setState(() => _kind = v.first),
+                      if (subs.running) ...[
+                        LinearProgressIndicator(
+                          value: subs.total == 0
+                              ? null
+                              : subs.done / subs.total,
+                        ),
+                        ListTile(
+                          dense: true,
+                          title: Text(
+                            l(
+                              context,
+                            ).globalSubs_running(subs.done, subs.total),
+                          ),
+                          trailing: OutlinedButton(
+                            onPressed: subs.cancel,
+                            child: Text(l(context).cancel),
+                          ),
+                        ),
+                      ],
+                      SwitchListTile(
+                        dense: true,
+                        title: Text(l(context).globalSubs_onlyDifferences),
+                        value: _onlyDifferences,
+                        onChanged: (v) => setState(() => _onlyDifferences = v),
+                      ),
+                      // One line per account: who it is, what it lacks, and a button
+                      // that gives it everything the others have.
+                      for (final account in accounts)
+                        ListTile(
+                          dense: true,
+                          leading: AccountAvatar(account),
+                          title: Text(account, overflow: TextOverflow.ellipsis),
+                          subtitle: Text(
+                            l(context).globalSubs_accountCounts(
+                              matrix.communities
+                                  .where((n) => matrix.isSubscribed(account, n))
+                                  .length,
+                              matrix.missing(account).length,
+                            ),
+                          ),
+                          trailing: FilledButton.tonal(
+                            onPressed:
+                                subs.running || matrix.missing(account).isEmpty
+                                ? null
+                                : () => _sync(accounts, only: account),
+                            child: Text(
+                              l(context).globalSubs_addMissing(
+                                matrix.missing(account).length,
+                              ),
+                            ),
+                          ),
+                        ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                        child: Text(
+                          l(context).globalSubs_tableHint,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              if (subs.running) ...[
-                LinearProgressIndicator(
-                  value: subs.total == 0 ? null : subs.done / subs.total,
-                ),
-                ListTile(
-                  dense: true,
-                  title: Text(
-                    l(context).globalSubs_running(subs.done, subs.total),
-                  ),
-                  trailing: OutlinedButton(
-                    onPressed: subs.cancel,
-                    child: Text(l(context).cancel),
-                  ),
-                ),
-              ],
-              SwitchListTile(
-                dense: true,
-                title: Text(l(context).globalSubs_onlyDifferences),
-                value: _onlyDifferences,
-                onChanged: (v) => setState(() => _onlyDifferences = v),
-              ),
-              // Header: one column per account, with a button that gives that
-              // account everything the others have.
+              // Column headers: the same avatars as above.
               Row(
                 children: [
                   const Spacer(),
@@ -146,23 +196,7 @@ class _GlobalSubscriptionsCompareScreenState
                       width: _cellWidth,
                       child: Tooltip(
                         message: account,
-                        child: InkResponse(
-                          onTap: subs.running || matrix.missing(account).isEmpty
-                              ? null
-                              : () => _sync(accounts, only: account),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              AccountAvatar(account),
-                              Text(
-                                matrix.missing(account).isEmpty
-                                    ? '✓'
-                                    : '+${matrix.missing(account).length}',
-                                style: Theme.of(context).textTheme.labelSmall,
-                              ),
-                            ],
-                          ),
-                        ),
+                        child: Center(child: AccountAvatar(account)),
                       ),
                     ),
                 ],
