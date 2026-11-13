@@ -203,6 +203,12 @@ class ServerClient {
 
     var message = 'Request failed with status ${response.statusCode}';
 
+    // A server that limits requests says when to come back.
+    final wait = int.tryParse(response.headers['retry-after'] ?? '');
+    if (response.statusCode == 429 && wait != null) {
+      message = '$message (retry after ${wait}s)';
+    }
+
     if (response.reasonPhrase != null) {
       message = '$message: ${response.reasonPhrase}';
     }

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:interstellar/src/api/host_check.dart';
 import 'package:interstellar/src/utils/subscription_matrix.dart';
 
 /// One account's subscriptions as last fetched from its server.
@@ -64,6 +65,14 @@ typedef SubsApplier =
       bool state,
     );
 
+/// Seconds a server asked us to wait, from an error message that says
+/// `retry after Ns`.
+@visibleForTesting
+Duration? retryAfterOf(String error) {
+  final m = RegExp(r'retry after (\d+)s').firstMatch(error);
+  return m == null ? null : Duration(seconds: int.parse(m.group(1)!));
+}
+
 /// Keeps every account's subscriptions cached on the device and runs the long
 /// jobs (fetching, subscribing) in the background: the screen only watches.
 class GlobalSubsController extends ChangeNotifier {
@@ -90,6 +99,121 @@ class GlobalSubsController extends ChangeNotifier {
   final Map<SubsKind, Set<String>> master = {};
   final Map<SubsKind, DateTime> masterUpdated = {};
 
+  /// Servers that are gone: their entries are left out of the global list and
+  /// never added to or removed from an account.
+  final Set<String> dead = {};
+
+  bool isDead(String name) => dead.contains(name.split('@').last);
+
+  /// Sets the dead servers and drops their entries from the global lists.
+  Future<void> setDead(Iterable<String> hosts) async {
+    dead
+      ..clear()
+      ..addAll(
+        hosts.map((h) => h.trim().toLowerCase()).where((h) => h.isNotEmpty),
+      );
+    for (final kind in master.keys) {
+      master[kind]!.removeWhere(isDead);
+    }
+    problems.removeWhere((h, _) => dead.contains(h));
+    notifyListeners();
+    await _save();
+  }
+
+  /// How many entries the accounts hold on [hosts] (what a purge would try to
+  /// remove).
+  int heldOnAccounts(Set<String> hosts) => [
+    for (final byAccount in snapshots.values)
+      for (final snap in byAccount.values)
+        for (final n in snap.subs)
+          if (hosts.contains(n.split('@').last)) n,
+  ].length;
+
+  /// Marks [hosts] dead, and with [removeFromAccounts] also tries to remove
+  /// their entries from every account that holds them, as one job. A gone
+  /// server usually refuses that, and the refusals show as failures.
+  Future<void> purge(
+    Iterable<String> hosts, {
+    bool removeFromAccounts = false,
+  }) async {
+    final set = hosts.map((h) => h.trim().toLowerCase()).toSet();
+    await setDead([...dead, ...set]);
+    if (!removeFromAccounts) return;
+    await _runPlans({
+      for (final kind in SubsKind.values)
+        kind: {
+          for (final e in snapshots[kind]!.entries)
+            e.key: (
+              add: <String>{},
+              remove: {
+                for (final n in e.value.subs)
+                  if (set.contains(n.split('@').last)) n,
+              },
+            ),
+        }..removeWhere((_, v) => v.remove.isEmpty),
+    });
+  }
+
+  /// Servers that failed their last check and are still in the global list.
+  final Map<String, HostProblem> problems = {};
+
+  /// How many entries of the global list are on [host].
+  int entriesOn(String host) => [
+    for (final names in master.values)
+      for (final n in names)
+        if (n.contains('@') && n.split('@').last == host) n,
+  ].length;
+
+  /// Asks each server of the global list, not marked dead, whether it
+  /// answers, and keeps how long each has been failing in [problems]. Several
+  /// are asked at once; [onProgress] gets the number asked so far and the
+  /// total, and [cancelled] stops the check early.
+  Future<void> checkHosts(
+    Future<({HostFailure kind, String detail})?> Function(String host) probe, {
+    void Function(int done, int total)? onProgress,
+    bool Function()? cancelled,
+  }) async {
+    final hosts = {
+      for (final names in master.values)
+        for (final n in names)
+          if (n.contains('@')) n.split('@').last,
+    }.where((h) => !dead.contains(h)).toList();
+    var next = 0;
+    var asked = 0;
+    await Future.wait([
+      for (var i = 0; i < 8; i++)
+        () async {
+          while (next < hosts.length && !(cancelled?.call() ?? false)) {
+            final host = hosts[next++];
+            ({HostFailure kind, String detail})? fault;
+            try {
+              fault = await probe(host);
+            } catch (e) {
+              fault = (kind: HostFailure.network, detail: '$e');
+            }
+            final now = DateTime.now();
+            final old = problems[host];
+            if (fault == null) {
+              problems.remove(host);
+            } else {
+              problems[host] = HostProblem(
+                kind: fault.kind,
+                detail: fault.detail,
+                since: old?.since ?? now,
+                last: now,
+                checks: (old?.checks ?? 0) + 1,
+              );
+            }
+            onProgress?.call(++asked, hosts.length);
+          }
+        }(),
+    ]);
+    // Forget servers that are no longer in the list.
+    problems.removeWhere((h, _) => !hosts.contains(h));
+    notifyListeners();
+    await _save();
+  }
+
   /// Accounts with a snapshot of [kind].
   Iterable<String> fetched(SubsKind kind) => snapshots[kind]!.keys;
 
@@ -101,6 +225,14 @@ class GlobalSubsController extends ChangeNotifier {
   /// same time; one on a busy account is refused.
   Set<String> get busy => _busy;
   bool get running => _busy.isNotEmpty;
+
+  /// Accounts whose server asked us to slow down, until when. All work for
+  /// such an account waits, not just the item that was refused.
+  final Map<String, DateTime> pausedUntil = {};
+
+  /// A short wait before each item of an account that was limited, doubled by
+  /// every refusal and halved by every success.
+  final Map<String, Duration> _gap = {};
 
   /// Per account state of the current or last job.
   final Map<String, JobStep> steps = {};
@@ -125,6 +257,12 @@ class GlobalSubsController extends ChangeNotifier {
     final data = await store.read();
     try {
       if (data != null) {
+        dead.addAll((data['dead'] as List?)?.cast<String>() ?? const []);
+        for (final e in (data['hostProblems'] as Map? ?? {}).entries) {
+          problems[e.key as String] = HostProblem.fromJson(
+            (e.value as Map).cast<String, dynamic>(),
+          );
+        }
         final kinds = data['kinds'] as Map<String, dynamic>? ?? {};
         for (final kind in SubsKind.values) {
           final k = kinds[kind.name] as Map<String, dynamic>?;
@@ -149,6 +287,8 @@ class GlobalSubsController extends ChangeNotifier {
       }
       master.clear();
       masterUpdated.clear();
+      dead.clear();
+      problems.clear();
     }
     _loaded = true;
     notifyListeners();
@@ -156,6 +296,8 @@ class GlobalSubsController extends ChangeNotifier {
 
   Future<void> _save() => store.write({
     'version': 2,
+    'dead': dead.toList(),
+    'hostProblems': {for (final e in problems.entries) e.key: e.value.toJson()},
     'kinds': {
       for (final kind in SubsKind.values)
         kind.name: {
@@ -180,8 +322,17 @@ class GlobalSubsController extends ChangeNotifier {
 
   /// The deduplicated union of every account's list [kind].
   Set<String> merged(SubsKind kind) => {
-    ...matrix(kind, snapshots[kind]!.keys).communities,
+    ...matrix(kind, snapshots[kind]!.keys).communities.where((n) => !isDead(n)),
   };
+
+  /// What [account] lacks of the global list of [kind], or, with no global
+  /// list yet, of what the other accounts hold.
+  Set<String> missingFor(SubsKind kind, String account) {
+    final have = snapshots[kind]![account]?.subs ?? <String>{};
+    return {...(master[kind] ?? merged(kind))}
+      ..removeAll(have)
+      ..removeWhere(isDead);
+  }
 
   void cancel() {
     if (running) _cancel = true;
@@ -235,25 +386,30 @@ class GlobalSubsController extends ChangeNotifier {
           accountDone[account] = 0;
           notifyListeners();
           var failed = false;
-          for (final kind in kinds) {
-            if (_cancel) break;
-            try {
-              final subs = await _retrying(
-                () => fetch(account, kind, () => _cancel),
-              );
-              if (subs != null && !_cancel) {
-                snapshots[kind]![account] = AccountSnapshot(
-                  subs,
-                  DateTime.now(),
-                );
-              }
-            } catch (e) {
-              failed = true;
-              failures.add('$account: ${kind.name} — ${why(e)}');
-            }
-            accountDone[account] = accountDone[account]! + 1;
-            notifyListeners();
-          }
+          // The lists of one account are independent: fetch them together.
+          await Future.wait([
+            for (final kind in kinds)
+              () async {
+                if (_cancel) return;
+                try {
+                  final subs = await _retrying(
+                    account,
+                    () => fetch(account, kind, () => _cancel),
+                  );
+                  if (subs != null && !_cancel) {
+                    snapshots[kind]![account] = AccountSnapshot(
+                      subs,
+                      DateTime.now(),
+                    );
+                  }
+                } catch (e) {
+                  failed = true;
+                  failures.add('$account: ${kind.name} — ${why(e)}');
+                }
+                accountDone[account] = accountDone[account]! + 1;
+                notifyListeners();
+              }(),
+          ]);
           steps[account] = _cancel
               ? JobStep.cancelled
               : failed
@@ -265,6 +421,19 @@ class GlobalSubsController extends ChangeNotifier {
     ]);
     await _save();
     await _end(accounts);
+  }
+
+  /// When any account's lists were last fetched or changed.
+  DateTime? get lastFetched {
+    DateTime? latest;
+    for (final byAccount in snapshots.values) {
+      for (final snap in byAccount.values) {
+        if (latest == null || snap.updated.isAfter(latest)) {
+          latest = snap.updated;
+        }
+      }
+    }
+    return latest;
   }
 
   /// Saves the merged list of each kind the cache holds as the local master.
@@ -321,11 +490,10 @@ class GlobalSubsController extends ChangeNotifier {
     List<String> accounts, {
     String? only,
   }) async {
-    final m = matrix(kind, accounts);
     final todo = [
-      for (final a in m.accounts)
+      for (final a in accounts)
         if (only == null || a == only)
-          for (final c in m.missing(a)) (a, c),
+          for (final c in missingFor(kind, a)) (a, c),
     ];
     final targets = {for (final t in todo) t.$1};
     if (todo.isEmpty || !_begin(targets)) return;
@@ -407,8 +575,9 @@ class GlobalSubsController extends ChangeNotifier {
     for (final t in targets)
       if (snapshots[kind]![t] != null)
         t: (
-          add: from.difference(snapshots[kind]![t]!.subs),
-          remove: snapshots[kind]![t]!.subs.difference(from),
+          add: from.difference(snapshots[kind]![t]!.subs)..removeWhere(isDead),
+          remove: snapshots[kind]![t]!.subs.difference(from)
+            ..removeWhere(isDead),
         ),
   }..removeWhere((_, v) => v.add.isEmpty && v.remove.isEmpty);
 
@@ -516,21 +685,64 @@ class GlobalSubsController extends ChangeNotifier {
     ]);
   }
 
-  /// Runs [call], trying again after a growing wait when the server says it
-  /// is being asked too often (HTTP 429) or the network dropped the request.
-  /// Other errors are not retried.
-  Future<T> _retrying<T>(Future<T> Function() call) async {
+  /// Runs [call] for [account], trying again when the server says it is being
+  /// asked too often (HTTP 429) or the network dropped the request. A 429 holds
+  /// back every request for that account for as long as the server asked (or a
+  /// growing wait), and slows the account down afterwards. Other errors are not
+  /// retried.
+  Future<T> _retrying<T>(String account, Future<T> Function() call) async {
     for (var attempt = 0; ; attempt++) {
+      await _waitTurn(account);
       try {
-        return await call();
+        final result = await call();
+        final gap = _gap[account];
+        if (gap != null) {
+          final half = gap ~/ 2;
+          half < retryDelay ~/ 50 ? _gap.remove(account) : _gap[account] = half;
+        }
+        return result;
       } catch (e) {
         final text = e.toString();
-        final transient =
-            text.contains('status 429') || text.contains('SocketException');
-        if (!transient || attempt >= 4 || _cancel) rethrow;
-        await Future<void>.delayed(retryDelay * (1 << attempt));
+        final limited = text.contains('status 429');
+        final dropped = text.contains('SocketException');
+        if (!(limited || dropped) || attempt >= (limited ? 8 : 4) || _cancel) {
+          rethrow;
+        }
+        var wait = retryAfterOf(text) ?? retryDelay * (1 << attempt);
+        if (wait > const Duration(minutes: 5)) {
+          wait = const Duration(minutes: 5);
+        }
+        if (limited) {
+          final until = DateTime.now().add(wait);
+          final old = pausedUntil[account];
+          if (old == null || until.isAfter(old)) pausedUntil[account] = until;
+          final gap = _gap[account] ?? retryDelay ~/ 10;
+          final doubled = gap * 2;
+          _gap[account] = doubled > retryDelay ? retryDelay : doubled;
+          notifyListeners();
+        } else {
+          await Future<void>.delayed(wait);
+        }
       }
     }
+  }
+
+  /// Waits out a pause the server asked for, then the account's short gap.
+  Future<void> _waitTurn(String account) async {
+    for (;;) {
+      final until = pausedUntil[account];
+      if (until == null) break;
+      final left = until.difference(DateTime.now());
+      if (left <= Duration.zero) {
+        pausedUntil.remove(account);
+        notifyListeners();
+        break;
+      }
+      if (_cancel) return;
+      await Future<void>.delayed(left);
+    }
+    final gap = _gap[account];
+    if (gap != null && gap > Duration.zero) await Future<void>.delayed(gap);
   }
 
   Future<void> _applyWithRetry(
@@ -538,7 +750,7 @@ class GlobalSubsController extends ChangeNotifier {
     SubsKind kind,
     String name,
     bool state,
-  ) => _retrying(() => apply(account, kind, name, state));
+  ) => _retrying(account, () => apply(account, kind, name, state));
 
   void _remember(String account, SubsKind kind, String name, bool state) {
     final old = snapshots[kind]![account];

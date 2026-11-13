@@ -735,15 +735,15 @@
   },
   "globalSubs_loadFailed": "Could not load this account's subscriptions",
   "globalSubs_empty": "No subscriptions found.",
-  "globalSubs_saved": "{kind}: {count} saved, updated {when}",
-  "@globalSubs_saved": {
+  "globalSubs_notSaved": "No saved lists yet",
+  "globalSubs_fetchShort": "Fetch",
+  "globalSubs_editShort": "Edit",
+  "globalSubs_fetchedAt": "Accounts last fetched {when}",
+  "@globalSubs_fetchedAt": {
     "placeholders": {
-      "kind": { "type": "String" },
-      "count": { "type": "int" },
       "when": { "type": "String" }
     }
   },
-  "globalSubs_notSaved": "No saved lists yet",
   "globalSubs_accountInfo": "{communities} communities, {communityBlocks} blocked communities, {userBlocks} blocked users, fetched {when}",
   "@globalSubs_accountInfo": {
     "placeholders": {
@@ -755,12 +755,63 @@
   },
   "globalSubs_onlyDifferences": "Only differences",
   "globalSubs_search": "Search",
+  "globalSubs_selectAll": "Select all",
+  "globalSubs_selectNone": "Deselect all",
+  "globalSubs_checkServers": "Check servers",
+  "globalSubs_checking": "Checking servers: {done} of {total}",
+  "@globalSubs_checking": {
+    "placeholders": {
+      "done": { "type": "int" },
+      "total": { "type": "int" }
+    }
+  },
+  "globalSubs_checkNone": "Every server answered.",
+  "globalSubs_reviewFailing": "Failing servers ({count})",
+  "@globalSubs_reviewFailing": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "globalSubs_checkFound": "A server can be down for a while without being gone, or block automated requests, so open the ones you doubt before marking them dead.",
+  "globalSubs_markDead": "Mark {count} dead",
+  "@globalSubs_markDead": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "globalSubs_failNetwork": "No connection or timed out",
+  "globalSubs_failHttp": "Answered with an error",
+  "globalSubs_failNotFediverse": "Answered, but not like a fediverse server",
+  "globalSubs_failSince": "{checks} failed checks since {when}: {detail}",
+  "@globalSubs_failSince": {
+    "placeholders": {
+      "checks": { "type": "int" },
+      "when": { "type": "String" },
+      "detail": { "type": "String" }
+    }
+  },
+  "globalSubs_openInBrowser": "Open in browser",
+  "globalSubs_hostEntries": "{host}: {count} entries",
+  "@globalSubs_hostEntries": {
+    "placeholders": {
+      "host": { "type": "String" },
+      "count": { "type": "int" }
+    }
+  },
+  "globalSubs_dead": "Dead servers",
+  "globalSubs_deadHelp": "Entries on these servers are left out of the global list and are not added to accounts. Remove a server to bring it back.",
+  "globalSubs_noDead": "No dead servers yet.",
+  "globalSubs_purgeServers": "Mark their servers dead",
+  "globalSubs_alsoRemove": "Also try to remove their {count} entries from the accounts",
+  "@globalSubs_alsoRemove": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
   "globalSubs_replaceSubs": "Replace subscriptions with the global list",
   "globalSubs_replaceBlocks": "Replace blocks with the global list",
   "globalSubs_replaceAll": "Replace everything with the global list",
   "globalSubs_noGlobalList": "Make the global list first: Edit the global list, then Rebuild from accounts.",
-  "globalSubs_editMaster": "Edit the global list",
-  "globalSubs_editMaster_help": "Edit one saved list, then make chosen accounts match it",
   "globalSubs_masterTitle": "Global list",
   "globalSubs_masterNone": "No global list yet. Fetch from the servers, then rebuild it from the accounts.",
   "globalSubs_masterInfo": "{kind}: {count} entries, updated {when}",
@@ -836,8 +887,12 @@
   "globalSubs_kind_communityBlocks": "Blocked communities",
   "globalSubs_kind_userBlocks": "Blocked users",
   "globalSubs_notFetched": "Not fetched yet",
-  "globalSubs_fetch": "Fetch from servers",
-  "globalSubs_fetch_help": "Asks each checked account for its subscriptions and blocks and keeps them on this device",
+  "globalSubs_waiting": "The server is limiting requests; continuing at {time}",
+  "@globalSubs_waiting": {
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
   "globalSubs_saveMerged": "Save merged list",
   "globalSubs_saveMerged_help": "Keeps each fetched list once, merged across accounts, on this device",
   "globalSubs_compare": "Compare and sync accounts",

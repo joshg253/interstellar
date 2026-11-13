@@ -190,8 +190,9 @@ class _GlobalSubscriptionsCompareScreenState
   /// Gives [only] (or every account) what the others have.
   Future<void> _sync(List<String> accounts, {String? only}) async {
     final subs = globalSubsFor(context.read<AppController>());
-    final m = subs.matrix(_kind, accounts);
-    final count = only == null ? m.missingTotal : m.missing(only).length;
+    final count = only == null
+        ? accounts.fold(0, (n, a) => n + subs.missingFor(_kind, a).length)
+        : subs.missingFor(_kind, only).length;
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -231,10 +232,11 @@ class _GlobalSubscriptionsCompareScreenState
         // A search shows every match, even ones all accounts already agree on.
         final rows = [
           for (final name in matrix.communities)
-            if (query.isNotEmpty
-                ? name.toLowerCase().contains(query)
-                : !_onlyDifferences ||
-                      accounts.any((a) => !matrix.isSubscribed(a, name)))
+            if (!subs.isDead(name) &&
+                (query.isNotEmpty
+                    ? name.toLowerCase().contains(query)
+                    : !_onlyDifferences ||
+                          accounts.any((a) => !matrix.isSubscribed(a, name))))
               name,
         ];
         return Scaffold(
@@ -244,7 +246,9 @@ class _GlobalSubscriptionsCompareScreenState
               IconButton(
                 tooltip: l(context).globalSubs_syncAll,
                 icon: const Icon(Icons.sync),
-                onPressed: subs.running || matrix.missingTotal == 0
+                onPressed:
+                    subs.running ||
+                        accounts.every((a) => subs.missingFor(_kind, a).isEmpty)
                     ? null
                     : () => _sync(accounts),
               ),
@@ -348,7 +352,7 @@ class _GlobalSubscriptionsCompareScreenState
                                               ),
                                             )
                                             .length,
-                                        matrix.missing(account).length,
+                                        subs.missingFor(_kind, account).length,
                                       ),
                               ),
                               trailing: Row(
@@ -357,12 +361,14 @@ class _GlobalSubscriptionsCompareScreenState
                                   FilledButton.tonal(
                                     onPressed:
                                         subs.busy.contains(account) ||
-                                            matrix.missing(account).isEmpty
+                                            subs
+                                                .missingFor(_kind, account)
+                                                .isEmpty
                                         ? null
                                         : () => _sync(accounts, only: account),
                                     child: Text(
                                       l(context).globalSubs_addMissing(
-                                        matrix.missing(account).length,
+                                        subs.missingFor(_kind, account).length,
                                       ),
                                     ),
                                   ),
