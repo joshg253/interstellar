@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:interstellar/src/api/client.dart';
 import 'package:interstellar/src/controller/server.dart';
 import 'package:interstellar/src/models/comment.dart';
@@ -14,6 +15,37 @@ Map<String, dynamic> searchShaped(Map<String, dynamic> json) => {
   'users': [if (json['person'] != null) json['person']],
   'next_page': null,
 };
+
+/// Whether the link [link] is the object with ActivityPub id [apId]: the same
+/// server and path, whatever the scheme, case or trailing slash, and without
+/// the slug Mbin puts after a thread or post id.
+@visibleForTesting
+bool sameObject(Uri link, String apId) {
+  final other = Uri.tryParse(apId);
+  if (other == null || link.host.toLowerCase() != other.host.toLowerCase()) {
+    return false;
+  }
+  List<String> path(Uri u) {
+    final seg = [
+      for (final s in u.pathSegments)
+        if (s.isNotEmpty) s,
+    ];
+    for (var i = 0; i + 2 < seg.length; i++) {
+      if ((seg[i] == 't' || seg[i] == 'p') &&
+          int.tryParse(seg[i + 1]) != null &&
+          seg[i + 2] != '-') {
+        seg.removeAt(i + 2);
+        break;
+      }
+    }
+    return seg;
+  }
+
+  final a = path(link);
+  final b = path(other);
+  return a.length == b.length &&
+      [for (var i = 0; i < a.length; i++) a[i] == b[i]].every((e) => e);
+}
 
 class APISearch {
   APISearch(this.client);
@@ -56,9 +88,13 @@ class APISearch {
         CommentModel() => item.apId,
         _ => null,
       };
-      if (apId == q) return item;
+      if (apId != null && sameObject(url, apId)) return item;
     }
-    return found.items.firstOrNull;
+    // Lemmy and PieFed answer with the one object asked for. Mbin's search
+    // also returns posts that merely mention the link, so there it must match.
+    return client.software == ServerSoftware.mbin
+        ? null
+        : found.items.firstOrNull;
   }
 
   Future<SearchListModel> get({

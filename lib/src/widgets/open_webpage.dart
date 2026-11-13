@@ -59,8 +59,16 @@ Future<bool> _isFediHost(AppController ac, String host) {
   final known = ac.servers[host]?.software;
   if (known != null) return Future.value(known != ServerSoftware.mastodon);
   return _fediHosts.putIfAbsent(host, () async {
-    final software = await getServerSoftware(host);
-    return software != null && software != ServerSoftware.mastodon;
+    try {
+      // A host that does not answer soon is not asked again only this time.
+      final software = await getServerSoftware(
+        host,
+      ).timeout(const Duration(seconds: 5));
+      return software != null && software != ServerSoftware.mastodon;
+    } on TimeoutException {
+      unawaited(Future<void>.microtask(() => _fediHosts.remove(host)));
+      return false;
+    }
   });
 }
 
