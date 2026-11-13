@@ -531,6 +531,13 @@ class MastodonAPI {
     );
     final found = _list(response.body);
     if (found.isEmpty) throw Exception('No such account');
+    // The search falls back to similar names when it cannot find this one;
+    // following or blocking one of those would act on the wrong person.
+    final got = found.first['acct']! as String;
+    final full = got.contains('@') ? got : '$got@${client.domain}';
+    if (full.toLowerCase() != acct.toLowerCase()) {
+      throw Exception('No such account');
+    }
     return found.first['id']! as String;
   }
 

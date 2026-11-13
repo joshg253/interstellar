@@ -50,9 +50,9 @@ GlobalSubsController globalSubsFor(AppController ac) =>
         }
         switch (kind) {
           case SubsKind.communityBlocks:
-            return listBlocked(api, host, users: false);
+            return listBlocked(api, host, users: false, cancelled: cancelled);
           case SubsKind.userBlocks:
-            return listBlocked(api, host, users: true);
+            return listBlocked(api, host, users: true, cancelled: cancelled);
           case SubsKind.communities:
             final names = <String>{};
             String? page;
