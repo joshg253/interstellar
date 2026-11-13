@@ -44,7 +44,10 @@ class FileSubsStore implements SubsStore {
   Future<void> write(Map<String, dynamic> data) async {
     final f = await file();
     await f.create(recursive: true);
-    await f.writeAsString(jsonEncode(data));
+    // Write beside it and rename, so a crash never leaves half a file.
+    final tmp = File('${f.path}.tmp');
+    await tmp.writeAsString(jsonEncode(data), flush: true);
+    await tmp.rename(f.path);
   }
 }
 
@@ -71,6 +74,15 @@ typedef SubsApplier =
 Duration? retryAfterOf(String error) {
   final m = RegExp(r'retry after (\d+)s').firstMatch(error);
   return m == null ? null : Duration(seconds: int.parse(m.group(1)!));
+}
+
+/// The names of [from] that [other] lacks, comparing without regard to case.
+Set<String> _minus(Set<String> from, Set<String> other) {
+  final have = {for (final n in other) n.toLowerCase()};
+  return {
+    for (final n in from)
+      if (!have.contains(n.toLowerCase())) n,
+  };
 }
 
 /// Keeps every account's subscriptions cached on the device and runs the long
@@ -103,7 +115,10 @@ class GlobalSubsController extends ChangeNotifier {
   /// never added to or removed from an account.
   final Set<String> dead = {};
 
-  bool isDead(String name) => dead.contains(name.split('@').last);
+  /// The server part of a name, in lower case.
+  static String hostOf(String name) => name.split('@').last.toLowerCase();
+
+  bool isDead(String name) => dead.contains(hostOf(name));
 
   /// Sets the dead servers and drops their entries from the global lists.
   Future<void> setDead(Iterable<String> hosts) async {
@@ -126,7 +141,7 @@ class GlobalSubsController extends ChangeNotifier {
     for (final byAccount in snapshots.values)
       for (final snap in byAccount.values)
         for (final n in snap.subs)
-          if (hosts.contains(n.split('@').last)) n,
+          if (hosts.contains(hostOf(n))) n,
   ].length;
 
   /// Marks [hosts] dead, and with [removeFromAccounts] also tries to remove
@@ -147,7 +162,7 @@ class GlobalSubsController extends ChangeNotifier {
               add: <String>{},
               remove: {
                 for (final n in e.value.subs)
-                  if (set.contains(n.split('@').last)) n,
+                  if (set.contains(hostOf(n))) n,
               },
             ),
         }..removeWhere((_, v) => v.remove.isEmpty),
@@ -161,7 +176,7 @@ class GlobalSubsController extends ChangeNotifier {
   int entriesOn(String host) => [
     for (final names in master.values)
       for (final n in names)
-        if (n.contains('@') && n.split('@').last == host) n,
+        if (n.contains('@') && hostOf(n) == host.toLowerCase()) n,
   ].length;
 
   /// Asks each server of the global list, not marked dead, whether it
@@ -176,7 +191,7 @@ class GlobalSubsController extends ChangeNotifier {
     final hosts = {
       for (final names in master.values)
         for (final n in names)
-          if (n.contains('@')) n.split('@').last,
+          if (n.contains('@')) hostOf(n),
     }.where((h) => !dead.contains(h)).toList();
     var next = 0;
     var asked = 0;
@@ -259,9 +274,12 @@ class GlobalSubsController extends ChangeNotifier {
       if (data != null) {
         dead.addAll((data['dead'] as List?)?.cast<String>() ?? const []);
         for (final e in (data['hostProblems'] as Map? ?? {}).entries) {
-          problems[e.key as String] = HostProblem.fromJson(
-            (e.value as Map).cast<String, dynamic>(),
-          );
+          // One unreadable record only loses that server's history.
+          try {
+            problems[e.key as String] = HostProblem.fromJson(
+              (e.value as Map).cast<String, dynamic>(),
+            );
+          } catch (_) {}
         }
         final kinds = data['kinds'] as Map<String, dynamic>? ?? {};
         for (final kind in SubsKind.values) {
@@ -294,7 +312,20 @@ class GlobalSubsController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _save() => store.write({
+  Future<void> _saving = Future.value();
+
+  /// Saves the cache. Saves run one at a time, in order, and a failed save is
+  /// listed as a failure instead of stopping whatever called it.
+  Future<void> _save() => _saving = _saving.then((_) async {
+    try {
+      await store.write(_toJson());
+    } catch (e) {
+      failures.add('Could not save the cache — ${why(e)}');
+      notifyListeners();
+    }
+  });
+
+  Map<String, dynamic> _toJson() => {
     'version': 2,
     'dead': dead.toList(),
     'hostProblems': {for (final e in problems.entries) e.key: e.value.toJson()},
@@ -312,7 +343,7 @@ class GlobalSubsController extends ChangeNotifier {
           },
         },
     },
-  });
+  };
 
   /// What the cache says each of [accounts] has in the list [kind].
   SubscriptionMatrix matrix(SubsKind kind, Iterable<String> accounts) =>
@@ -329,9 +360,7 @@ class GlobalSubsController extends ChangeNotifier {
   /// list yet, of what the other accounts hold.
   Set<String> missingFor(SubsKind kind, String account) {
     final have = snapshots[kind]![account]?.subs ?? <String>{};
-    return {...(master[kind] ?? merged(kind))}
-      ..removeAll(have)
-      ..removeWhere(isDead);
+    return _minus(master[kind] ?? merged(kind), have)..removeWhere(isDead);
   }
 
   void cancel() {
@@ -476,6 +505,7 @@ class GlobalSubsController extends ChangeNotifier {
     Iterable<String> add = const [],
     Iterable<String> remove = const [],
   }) async {
+    if (master[kind] == null && add.isEmpty) return;
     master[kind] = {...?master[kind], ...add}..removeAll(remove);
     masterUpdated[kind] = DateTime.now();
     notifyListeners();
@@ -575,9 +605,8 @@ class GlobalSubsController extends ChangeNotifier {
     for (final t in targets)
       if (snapshots[kind]![t] != null)
         t: (
-          add: from.difference(snapshots[kind]![t]!.subs)..removeWhere(isDead),
-          remove: snapshots[kind]![t]!.subs.difference(from)
-            ..removeWhere(isDead),
+          add: _minus(from, snapshots[kind]![t]!.subs)..removeWhere(isDead),
+          remove: _minus(snapshots[kind]![t]!.subs, from)..removeWhere(isDead),
         ),
   }..removeWhere((_, v) => v.add.isEmpty && v.remove.isEmpty);
 
@@ -692,7 +721,7 @@ class GlobalSubsController extends ChangeNotifier {
   /// retried.
   Future<T> _retrying<T>(String account, Future<T> Function() call) async {
     for (var attempt = 0; ; attempt++) {
-      await _waitTurn(account);
+      if (!await _waitTurn(account)) throw Exception('cancelled');
       try {
         final result = await call();
         final gap = _gap[account];
@@ -708,8 +737,10 @@ class GlobalSubsController extends ChangeNotifier {
         if (!(limited || dropped) || attempt >= (limited ? 8 : 4) || _cancel) {
           rethrow;
         }
+        // What the server asked for is honored in full; our own guess is
+        // capped.
         var wait = retryAfterOf(text) ?? retryDelay * (1 << attempt);
-        if (wait > const Duration(minutes: 5)) {
+        if (retryAfterOf(text) == null && wait > const Duration(minutes: 5)) {
           wait = const Duration(minutes: 5);
         }
         if (limited) {
@@ -728,7 +759,8 @@ class GlobalSubsController extends ChangeNotifier {
   }
 
   /// Waits out a pause the server asked for, then the account's short gap.
-  Future<void> _waitTurn(String account) async {
+  /// Returns false when the job was cancelled meanwhile.
+  Future<bool> _waitTurn(String account) async {
     for (;;) {
       final until = pausedUntil[account];
       if (until == null) break;
@@ -738,11 +770,13 @@ class GlobalSubsController extends ChangeNotifier {
         notifyListeners();
         break;
       }
-      if (_cancel) return;
-      await Future<void>.delayed(left);
+      if (_cancel) return false;
+      const step = Duration(milliseconds: 250);
+      await Future<void>.delayed(left < step ? left : step);
     }
     final gap = _gap[account];
     if (gap != null && gap > Duration.zero) await Future<void>.delayed(gap);
+    return true;
   }
 
   Future<void> _applyWithRetry(
