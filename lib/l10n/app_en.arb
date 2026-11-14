@@ -753,6 +753,36 @@
       "when": { "type": "String" }
     }
   },
+  "globalSubs_onlyDifferences": "Only differences",
+  "globalSubs_search": "Search",
+  "globalSubs_addToAll": "Add to all accounts",
+  "globalSubs_removeFromAll": "Remove from all accounts",
+  "globalSubs_addResultsToAll": "Add these {count} to all accounts",
+  "@globalSubs_addResultsToAll": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "globalSubs_removeResultsFromAll": "Remove these {count} from all accounts",
+  "@globalSubs_removeResultsFromAll": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "globalSubs_accountCounts": "Has {have}, missing {missing}",
+  "@globalSubs_accountCounts": {
+    "placeholders": {
+      "have": { "type": "int" },
+      "missing": { "type": "int" }
+    }
+  },
+  "globalSubs_addMissing": "Add {count} missing",
+  "@globalSubs_addMissing": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "globalSubs_tableHint": "A check means that account has it. Tap a box to add or remove it on that account only. The avatars above the boxes are the accounts listed here, in order.",
   "globalSubs_kind_communities": "Communities",
   "globalSubs_kind_communityBlocks": "Blocked communities",
   "globalSubs_kind_userBlocks": "Blocked users",

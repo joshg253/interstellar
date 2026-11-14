@@ -105,6 +105,10 @@ class GlobalSubsController extends ChangeNotifier {
   int total = 0;
   int done = 0;
 
+  /// Steps of the current or last job, per account.
+  final Map<String, int> accountTotal = {};
+  final Map<String, int> accountDone = {};
+
   bool _cancel = false;
   bool _loaded = false;
 
@@ -187,6 +191,8 @@ class GlobalSubsController extends ChangeNotifier {
       ..addEntries(accounts.map((a) => MapEntry(a, JobStep.waiting)));
     total = steps.length;
     done = 0;
+    accountTotal.clear();
+    accountDone.clear();
     notifyListeners();
     return true;
   }
@@ -207,6 +213,8 @@ class GlobalSubsController extends ChangeNotifier {
       for (final account in accounts)
         () async {
           steps[account] = JobStep.running;
+          accountTotal[account] = kinds.length;
+          accountDone[account] = 0;
           notifyListeners();
           var failed = false;
           for (final kind in kinds) {
@@ -223,6 +231,8 @@ class GlobalSubsController extends ChangeNotifier {
               failed = true;
               failures.add('$account: ${kind.name}');
             }
+            accountDone[account] = accountDone[account]! + 1;
+            notifyListeners();
           }
           steps[account] = _cancel
               ? JobStep.cancelled
@@ -250,34 +260,95 @@ class GlobalSubsController extends ChangeNotifier {
   }
 
   /// Subscribes (or blocks) each account to everything the others have in the
-  /// list [kind] and it lacks, judging by the cache. One at a time so a
-  /// server's rate limit holds.
-  Future<void> syncMissing(SubsKind kind, List<String> accounts) async {
+  /// list [kind] and it lacks, judging by the cache; with [only], just that
+  /// account, a few at a time.
+  Future<void> syncMissing(
+    SubsKind kind,
+    List<String> accounts, {
+    String? only,
+  }) async {
     final m = matrix(kind, accounts);
     final todo = [
       for (final a in m.accounts)
-        for (final c in m.missing(a)) (a, c),
+        if (only == null || a == only)
+          for (final c in m.missing(a)) (a, c),
     ];
     if (todo.isEmpty || !_begin('sync', accounts)) return;
     total = todo.length;
-    for (final (account, name) in todo) {
-      if (_cancel) break;
-      steps[account] = JobStep.running;
-      notifyListeners();
-      try {
-        await apply(account, kind, name, true);
-        _remember(account, kind, name, true);
-      } catch (_) {
-        failures.add('$account: $name');
-      }
-      done++;
-      notifyListeners();
-    }
+    // A few at a time per account (a server's rate limit is per account);
+    // different accounts run side by side.
+    await Future.wait([
+      for (final account in {for (final t in todo) t.$1})
+        _worker(account, kind, [
+          for (final t in todo)
+            if (t.$1 == account) t.$2,
+        ]),
+    ]);
     for (final a in accounts) {
       steps[a] = _cancel ? JobStep.cancelled : JobStep.done;
     }
     await _save();
     await _end();
+  }
+
+  /// Makes [names] present (or absent, with [state] false) on every one of
+  /// [accounts] that is not already so, in the background.
+  Future<void> setMany(
+    SubsKind kind,
+    List<String> names,
+    List<String> accounts,
+    bool state,
+  ) async {
+    final work = {
+      for (final account in accounts)
+        account: [
+          for (final n in names)
+            if ((snapshots[kind]![account]?.subs.contains(n) ?? false) != state)
+              n,
+        ],
+    }..removeWhere((_, v) => v.isEmpty);
+    if (work.isEmpty || !_begin('sync', accounts)) return;
+    total = work.values.fold(0, (sum, v) => sum + v.length);
+    await Future.wait([
+      for (final e in work.entries) _worker(e.key, kind, e.value, state: state),
+    ]);
+    for (final a in accounts) {
+      steps[a] = _cancel ? JobStep.cancelled : JobStep.done;
+    }
+    await _save();
+    await _end();
+  }
+
+  static const _perAccount = 3;
+
+  Future<void> _worker(
+    String account,
+    SubsKind kind,
+    List<String> names, {
+    bool state = true,
+  }) async {
+    steps[account] = JobStep.running;
+    accountTotal[account] = names.length;
+    accountDone[account] = 0;
+    notifyListeners();
+    var next = 0;
+    await Future.wait([
+      for (var i = 0; i < _perAccount; i++)
+        () async {
+          while (!_cancel && next < names.length) {
+            final name = names[next++];
+            try {
+              await apply(account, kind, name, state);
+              _remember(account, kind, name, state);
+            } catch (_) {
+              failures.add('$account: $name');
+            }
+            accountDone[account] = accountDone[account]! + 1;
+            done++;
+            notifyListeners();
+          }
+        }(),
+    ]);
   }
 
   void _remember(String account, SubsKind kind, String name, bool state) {

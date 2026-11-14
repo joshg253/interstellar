@@ -119,6 +119,16 @@ List<String> globalSubsAccounts(AppController ac) => [
       account,
 ];
 
+/// A thin bar under an account's line while a job is working on it.
+Widget globalSubsAccountBar(GlobalSubsController subs, String account) {
+  final total = subs.accountTotal[account] ?? 0;
+  final done = subs.accountDone[account] ?? 0;
+  if (!subs.running || total == 0 || done >= total) {
+    return const SizedBox.shrink();
+  }
+  return LinearProgressIndicator(value: done / total);
+}
+
 String globalSubsWhen(DateTime t) => t.toLocal().toString().substring(0, 16);
 
 /// Status of the cached subscriptions and the jobs that fill them.
@@ -201,9 +211,6 @@ class _GlobalSubscriptionsScreenState extends State<GlobalSubscriptionsScreen> {
                     ),
                   ),
               if (subs.running) ...[
-                LinearProgressIndicator(
-                  value: subs.total == 0 ? null : subs.done / subs.total,
-                ),
                 ListTile(
                   title: Text(
                     l(context).globalSubs_running(subs.done, subs.total),
@@ -216,7 +223,7 @@ class _GlobalSubscriptionsScreenState extends State<GlobalSubscriptionsScreen> {
                 ),
               ],
               const Divider(),
-              for (final account in accounts)
+              for (final account in accounts) ...[
                 CheckboxListTile(
                   value: !_unchecked.contains(account),
                   onChanged: subs.running
@@ -232,6 +239,8 @@ class _GlobalSubscriptionsScreenState extends State<GlobalSubscriptionsScreen> {
                   title: Text(account),
                   subtitle: Text(_info(context, subs, account)),
                 ),
+                globalSubsAccountBar(subs, account),
+              ],
               if (subs.failures.isNotEmpty && !subs.running)
                 ExpansionTile(
                   leading: const Icon(Icons.error_outline),

@@ -33,6 +33,10 @@ GlobalSubsController _make(
 );
 
 void main() {
+  tableTests();
+  parallelTests();
+  batchTests();
+  progressTests();
   test('fetching stores each account and survives a restart', () async {
     final store = _MemStore();
     final c = _make(
@@ -173,4 +177,139 @@ void main() {
       expect(await store.read(), isNull);
     },
   );
+}
+
+void tableTests() {
+  test('syncing onto one account leaves the others alone', () async {
+    final applied = <String>[];
+    final c = _make(
+      _MemStore(),
+      server: {
+        SubsKind.communities: {
+          a: {'only-a@x.example'},
+          b: {'only-b@y.example'},
+        },
+      },
+      applied: applied,
+    );
+    await c.load();
+    await c.fetchAccounts([a, b]);
+    await c.syncMissing(SubsKind.communities, [a, b], only: b);
+    expect(applied, ['$b communities only-a@x.example true']);
+    expect(c.snapshots[SubsKind.communities]![a]!.subs, {'only-a@x.example'});
+  });
+}
+
+void parallelTests() {
+  test('one account syncs several items at once, but never too many', () async {
+    var running = 0;
+    var peak = 0;
+    final c = GlobalSubsController(
+      store: _MemStore(),
+      fetch: (account, kind, cancelled) async => account == a
+          ? {for (var i = 0; i < 12; i++) 'c$i@x.example'}
+          : <String>{},
+      apply: (account, kind, name, state) async {
+        running++;
+        if (running > peak) peak = running;
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+        running--;
+      },
+    );
+    await c.load();
+    await c.fetchAccounts([a, b]);
+    await c.syncMissing(SubsKind.communities, [a, b], only: b);
+    expect(peak, greaterThan(1));
+    expect(peak, lessThanOrEqualTo(4));
+    expect(c.snapshots[SubsKind.communities]![b]!.subs, hasLength(12));
+    expect(c.done, 12);
+  });
+
+  test(
+    'a failure in a parallel sync is listed and the rest still go',
+    () async {
+      final c = GlobalSubsController(
+        store: _MemStore(),
+        fetch: (account, kind, cancelled) async =>
+            account == a ? {'ok@x.example', 'bad@x.example'} : <String>{},
+        apply: (account, kind, name, state) async {
+          if (name.startsWith('bad')) throw StateError('no');
+        },
+      );
+      await c.load();
+      await c.fetchAccounts([a, b]);
+      await c.syncMissing(SubsKind.communities, [a, b]);
+      expect(c.failures, ['$b: bad@x.example']);
+      expect(c.snapshots[SubsKind.communities]![b]!.subs, {'ok@x.example'});
+    },
+  );
+}
+
+void batchTests() {
+  GlobalSubsController make(List<String> applied) => GlobalSubsController(
+    store: _MemStore(),
+    fetch: (account, kind, cancelled) async => account == a
+        ? {'one@x.example', 'two@x.example'}
+        : {'two@x.example', 'three@x.example'},
+    apply: (account, kind, name, state) async =>
+        applied.add('$account $name $state'),
+  );
+
+  test(
+    'removing items from all accounts skips accounts without them',
+    () async {
+      final applied = <String>[];
+      final c = make(applied);
+      await c.load();
+      await c.fetchAccounts([a, b]);
+      await c.setMany(
+        SubsKind.communities,
+        ['one@x.example', 'two@x.example'],
+        [a, b],
+        false,
+      );
+      expect(applied.toSet(), {
+        '$a one@x.example false',
+        '$a two@x.example false',
+        '$b two@x.example false',
+      });
+      expect(c.snapshots[SubsKind.communities]![a]!.subs, isEmpty);
+      expect(c.snapshots[SubsKind.communities]![b]!.subs, {'three@x.example'});
+    },
+  );
+
+  test('adding items to all accounts skips accounts that have them', () async {
+    final applied = <String>[];
+    final c = make(applied);
+    await c.load();
+    await c.fetchAccounts([a, b]);
+    await c.setMany(
+      SubsKind.communities,
+      ['one@x.example', 'two@x.example'],
+      [a, b],
+      true,
+    );
+    expect(applied, ['$b one@x.example true']);
+  });
+}
+
+void progressTests() {
+  test('progress is counted per account', () async {
+    final c = GlobalSubsController(
+      store: _MemStore(),
+      fetch: (account, kind, cancelled) async => account == a
+          ? {'one@x.example', 'two@x.example', 'three@x.example'}
+          : <String>{},
+      apply: (account, kind, name, state) async {},
+    );
+    await c.load();
+    await c.fetchAccounts([a, b]);
+    // One step per list for each account.
+    expect(c.accountTotal[a], SubsKind.values.length);
+    expect(c.accountDone[a], SubsKind.values.length);
+    await c.syncMissing(SubsKind.communities, [a, b]);
+    expect(c.accountTotal[b], 3);
+    expect(c.accountDone[b], 3);
+    expect(c.accountTotal.containsKey(a), isFalse);
+  });
 }
