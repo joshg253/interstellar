@@ -131,6 +131,10 @@ class AppRouter extends RootStackRouter {
           path: 'settings/utilities/subscriptions',
         ),
         AutoRoute(
+          page: GlobalSubscriptionsCompareRoute.page,
+          path: 'settings/utilities/subscriptions/compare',
+        ),
+        AutoRoute(
           page: AccountMigrationRoute.page,
           path: 'settings/utilities/migration',
         ),

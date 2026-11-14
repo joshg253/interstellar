@@ -1,12 +1,127 @@
-import 'package:auto_route/annotations.dart';
+import 'dart:io';
+
+import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
+import 'package:interstellar/src/api/blocks.dart';
+import 'package:interstellar/src/api/mastodon.dart';
 import 'package:interstellar/src/controller/controller.dart';
+import 'package:interstellar/src/controller/global_subs.dart';
+import 'package:interstellar/src/controller/router.gr.dart';
+import 'package:interstellar/src/controller/server.dart';
 import 'package:interstellar/src/screens/explore/explore_screen.dart';
-import 'package:interstellar/src/utils/subscription_matrix.dart';
 import 'package:interstellar/src/utils/utils.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 
-/// Every account's community subscriptions side by side.
+const _maxPages = 100;
+
+GlobalSubsController? _instance;
+
+/// The one controller for the app, so a job outlives the screen that began it.
+GlobalSubsController globalSubsFor(AppController ac) =>
+    _instance ??= GlobalSubsController(
+      store: FileSubsStore(() async {
+        final dir = await getApplicationSupportDirectory();
+        return File(p.join(dir.path, 'global_subscriptions.json'));
+      }),
+      fetch: (account, kind, cancelled) async {
+        final api = await ac.getApiForAccount(account);
+        final host = account.split('@').last;
+        if (api.client.software == ServerSoftware.mastodon) {
+          final masto = MastodonAPI(api.client);
+          return switch (kind) {
+            SubsKind.communities => mastodonAccountNames(
+              await masto.following(),
+              host,
+              groups: true,
+            ),
+            SubsKind.communityBlocks => mastodonAccountNames(
+              await masto.blocked(),
+              host,
+              groups: true,
+            ),
+            SubsKind.userBlocks => mastodonAccountNames(
+              await masto.blocked(),
+              host,
+              groups: false,
+            ),
+          };
+        }
+        switch (kind) {
+          case SubsKind.communityBlocks:
+            return listBlocked(api, host, users: false);
+          case SubsKind.userBlocks:
+            return listBlocked(api, host, users: true);
+          case SubsKind.communities:
+            final names = <String>{};
+            String? page;
+            var pages = 0;
+            do {
+              if (cancelled()) return null;
+              final res = await api.community.list(
+                page: page,
+                filter: ExploreFilter.subscribed,
+              );
+              names.addAll(res.items.map((e) => normalizeName(e.name, host)));
+              page = res.nextPage;
+            } while (page != null && ++pages < _maxPages);
+            return names;
+        }
+      },
+      apply: (account, kind, name, state) async {
+        final api = await ac.getApiForAccount(account);
+        final host = account.split('@').last;
+        if (api.client.software == ServerSoftware.mastodon) {
+          final masto = MastodonAPI(api.client);
+          final id = await masto.resolveAccount(name);
+          if (kind == SubsKind.communities) {
+            await masto.setFollow(id, state);
+          } else {
+            await masto.setBlock(id, state);
+          }
+          return;
+        }
+        final local = denormalizeName(name, host);
+        switch (kind) {
+          case SubsKind.communities:
+            final found = await api.community.getByName(local);
+            if (found.isUserSubscribed != state) {
+              await api.community.subscribe(found.id, state);
+            }
+          case SubsKind.communityBlocks:
+            final found = await api.community.getByName(local);
+            if ((found.isBlockedByUser ?? false) != state) {
+              await api.community.block(found.id, state);
+            }
+          case SubsKind.userBlocks:
+            final found = await api.users.getByName(local);
+            if ((found.isBlockedByUser ?? false) != state) {
+              await api.users.putBlock(found.id, state);
+            }
+        }
+      },
+    );
+
+String globalSubsKindLabel(BuildContext context, SubsKind kind) =>
+    switch (kind) {
+      SubsKind.communities => l(context).globalSubs_kind_communities,
+      SubsKind.communityBlocks => l(context).globalSubs_kind_communityBlocks,
+      SubsKind.userBlocks => l(context).globalSubs_kind_userBlocks,
+    };
+
+/// Signed-in accounts. A Mastodon account's follows of groups stand for
+/// communities.
+List<String> globalSubsAccounts(AppController ac) => [
+  for (final account in ac.accounts.keys)
+    if (account.split('@').first.isNotEmpty &&
+        ac.servers.containsKey(account.split('@').last))
+      account,
+];
+
+String globalSubsWhen(DateTime t) => t.toLocal().toString().substring(0, 16);
+
+/// Status of the cached subscriptions and the jobs that fill them.
 @RoutePage()
 class GlobalSubscriptionsScreen extends StatefulWidget {
   const GlobalSubscriptionsScreen({super.key});
@@ -17,206 +132,145 @@ class GlobalSubscriptionsScreen extends StatefulWidget {
 }
 
 class _GlobalSubscriptionsScreenState extends State<GlobalSubscriptionsScreen> {
-  static const _maxPages = 100;
-
-  SubscriptionMatrix? _matrix;
-  final Map<String, Object> _loadErrors = {};
-  final Set<String> _busy = {};
-  final List<String> _failed = [];
-  bool _syncing = false;
-
-  String _cell(String account, String community) => '$account\n$community';
+  final Set<String> _unchecked = {};
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    globalSubsFor(context.read<AppController>()).load();
   }
 
-  /// Accounts that can list communities: signed in, and not Mastodon.
-  List<String> _accounts(AppController ac) => [
-    for (final account in ac.accounts.keys)
-      if (account.split('@').first.isNotEmpty &&
-          (ac.servers[account.split('@').last]?.software.canBeAppAccount ??
-              false))
-        account,
-  ];
-
-  Future<void> _load() async {
-    final ac = context.read<AppController>();
-    final accounts = _accounts(ac);
-    setState(() {
-      _matrix = null;
-      _loadErrors.clear();
-    });
-    final byAccount = <String, Set<String>>{};
-    await Future.wait([
-      for (final account in accounts)
-        () async {
-          try {
-            final api = await ac.getApiForAccount(account);
-            final host = account.split('@').last;
-            final names = <String>{};
-            String? page;
-            var pages = 0;
-            do {
-              final res = await api.community.list(
-                page: page,
-                filter: ExploreFilter.subscribed,
-              );
-              names.addAll(res.items.map((e) => normalizeName(e.name, host)));
-              page = res.nextPage;
-            } while (page != null && ++pages < _maxPages);
-            byAccount[account] = names;
-          } catch (e) {
-            _loadErrors[account] = e;
-            byAccount[account] = {};
-          }
-        }(),
-    ]);
-    if (!mounted) return;
-    setState(() {
-      // Keeps the account order stable.
-      _matrix = SubscriptionMatrix({
-        for (final account in accounts) account: byAccount[account] ?? {},
-      });
-    });
-  }
-
-  /// Subscribes or unsubscribes [account] by looking the community up on its
-  /// own server. Returns whether it worked.
-  Future<bool> _apply(String account, String community, bool state) async {
-    final ac = context.read<AppController>();
-    final key = _cell(account, community);
-    setState(() => _busy.add(key));
-    try {
-      final api = await ac.getApiForAccount(account);
-      final host = account.split('@').last;
-      final found = await api.community.getByName(
-        denormalizeName(community, host),
-      );
-      if (found.isUserSubscribed != state) {
-        await api.community.subscribe(found.id, state);
-      }
-      _matrix?.set(account, community, state);
-      return true;
-    } catch (_) {
-      _failed.add('$account: $community');
-      return false;
-    } finally {
-      if (mounted) setState(() => _busy.remove(key));
-    }
-  }
-
-  Future<void> _syncAll() async {
-    final matrix = _matrix;
-    if (matrix == null || _syncing) return;
-    final todo = [
-      for (final account in matrix.accounts)
-        for (final community in matrix.missing(account)) (account, community),
-    ];
-    if (todo.isEmpty) return;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(l(context).globalSubs_syncAll),
-        content: Text(l(context).globalSubs_syncAll_confirm(todo.length)),
-        actions: [
-          OutlinedButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(l(context).cancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(l(context).globalSubs_syncAll),
-          ),
-        ],
-      ),
+  String _info(BuildContext context, GlobalSubsController subs, String a) {
+    final c = subs.snapshots[SubsKind.communities]![a];
+    final cb = subs.snapshots[SubsKind.communityBlocks]![a];
+    final ub = subs.snapshots[SubsKind.userBlocks]![a];
+    final times = [
+      c,
+      cb,
+      ub,
+    ].whereType<AccountSnapshot>().map((e) => e.updated);
+    if (times.isEmpty) return l(context).globalSubs_notFetched;
+    return l(context).globalSubs_accountInfo(
+      c?.subs.length ?? 0,
+      cb?.subs.length ?? 0,
+      ub?.subs.length ?? 0,
+      globalSubsWhen(times.reduce((x, y) => x.isAfter(y) ? x : y)),
     );
-    if (ok != true || !mounted) return;
-    setState(() {
-      _syncing = true;
-      _failed.clear();
-    });
-    // One at a time, so a long list can't hit a server's rate limit.
-    for (final (account, community) in todo) {
-      if (!mounted) return;
-      await _apply(account, community, true);
-    }
-    if (mounted) setState(() => _syncing = false);
   }
+
+  IconData _icon(JobStep? step) => switch (step) {
+    JobStep.done => Icons.check_circle_outline,
+    JobStep.failed => Icons.error_outline,
+    JobStep.cancelled => Icons.cancel_outlined,
+    JobStep.running => Icons.sync,
+    _ => Icons.schedule,
+  };
 
   @override
   Widget build(BuildContext context) {
-    final matrix = _matrix;
-    final accounts = matrix?.accounts ?? const <String>[];
+    final ac = context.read<AppController>();
+    final subs = globalSubsFor(ac);
+    final accounts = globalSubsAccounts(ac);
+    final chosen = [
+      for (final a in accounts)
+        if (!_unchecked.contains(a)) a,
+    ];
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(l(context).settings_globalSubscriptions),
-        actions: [
-          IconButton(
-            tooltip: l(context).globalSubs_syncAll,
-            icon: const Icon(Icons.sync),
-            onPressed: matrix == null || _syncing || matrix.missingTotal == 0
-                ? null
-                : _syncAll,
-          ),
-          IconButton(
-            tooltip: l(context).action_refresh,
-            icon: const Icon(Icons.refresh),
-            onPressed: _syncing ? null : _load,
-          ),
-        ],
-      ),
-      body: matrix == null
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              children: [
-                if (_syncing) const LinearProgressIndicator(),
-                for (final account in _loadErrors.keys)
+      appBar: AppBar(title: Text(l(context).settings_globalSubscriptions)),
+      body: ListenableBuilder(
+        listenable: subs,
+        builder: (context, _) {
+          return ListView(
+            children: [
+              if (subs.master.isEmpty)
+                ListTile(
+                  leading: const Icon(Icons.save_outlined),
+                  title: Text(l(context).globalSubs_notSaved),
+                ),
+              for (final kind in SubsKind.values)
+                if (subs.master[kind] != null)
                   ListTile(
-                    leading: const Icon(Icons.error_outline),
-                    title: Text(account),
-                    subtitle: Text(l(context).globalSubs_loadFailed),
-                  ),
-                if (_failed.isNotEmpty)
-                  ExpansionTile(
-                    leading: const Icon(Icons.error_outline),
-                    title: Text(l(context).globalSubs_failed(_failed.length)),
-                    children: [
-                      for (final item in _failed) ListTile(title: Text(item)),
-                    ],
-                  ),
-                if (matrix.communities.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Text(l(context).globalSubs_empty),
-                  ),
-                for (final community in matrix.communities)
-                  ListTile(
-                    title: Text(community),
-                    subtitle: Wrap(
-                      spacing: 6,
-                      children: [
-                        for (final account in accounts)
-                          if (!_loadErrors.containsKey(account))
-                            FilterChip(
-                              label: Text(account),
-                              selected: matrix.isSubscribed(account, community),
-                              visualDensity: VisualDensity.compact,
-                              onSelected:
-                                  _syncing ||
-                                      _busy.contains(_cell(account, community))
-                                  ? null
-                                  : (value) =>
-                                        _apply(account, community, value),
-                            ),
-                      ],
+                    leading: const Icon(Icons.save_outlined),
+                    title: Text(
+                      l(context).globalSubs_saved(
+                        globalSubsKindLabel(context, kind),
+                        subs.master[kind]!.length,
+                        globalSubsWhen(subs.masterUpdated[kind]!),
+                      ),
                     ),
                   ),
+              if (subs.running) ...[
+                LinearProgressIndicator(
+                  value: subs.total == 0 ? null : subs.done / subs.total,
+                ),
+                ListTile(
+                  title: Text(
+                    l(context).globalSubs_running(subs.done, subs.total),
+                  ),
+                  subtitle: Text(l(context).globalSubs_runningHint),
+                  trailing: OutlinedButton(
+                    onPressed: subs.cancel,
+                    child: Text(l(context).cancel),
+                  ),
+                ),
               ],
-            ),
+              const Divider(),
+              for (final account in accounts)
+                CheckboxListTile(
+                  value: !_unchecked.contains(account),
+                  onChanged: subs.running
+                      ? null
+                      : (v) => setState(
+                          () => (v ?? false)
+                              ? _unchecked.remove(account)
+                              : _unchecked.add(account),
+                        ),
+                  secondary: subs.steps.containsKey(account)
+                      ? Icon(_icon(subs.steps[account]))
+                      : null,
+                  title: Text(account),
+                  subtitle: Text(_info(context, subs, account)),
+                ),
+              if (subs.failures.isNotEmpty && !subs.running)
+                ExpansionTile(
+                  leading: const Icon(Icons.error_outline),
+                  title: Text(
+                    l(context).globalSubs_failed(subs.failures.length),
+                  ),
+                  children: [
+                    for (final item in subs.failures)
+                      ListTile(title: Text(item)),
+                  ],
+                ),
+              const Divider(),
+              ListTile(
+                leading: const Icon(Icons.cloud_download_outlined),
+                title: Text(l(context).globalSubs_fetch),
+                subtitle: Text(l(context).globalSubs_fetch_help),
+                enabled: !subs.running && chosen.isNotEmpty,
+                onTap: () => subs.fetchAccounts(chosen),
+              ),
+              ListTile(
+                leading: const Icon(Icons.merge_type),
+                title: Text(l(context).globalSubs_saveMerged),
+                subtitle: Text(l(context).globalSubs_saveMerged_help),
+                enabled: !subs.running && subs.hasData,
+                onTap: subs.saveMerged,
+              ),
+              ListTile(
+                leading: const Icon(Icons.compare_arrows),
+                title: Text(l(context).globalSubs_compare),
+                subtitle: Text(l(context).globalSubs_compare_help),
+                enabled: subs.hasData,
+                onTap: () => context.router.push(
+                  const GlobalSubscriptionsCompareRoute(),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 }
