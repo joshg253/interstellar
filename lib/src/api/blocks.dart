@@ -35,11 +35,15 @@ Set<String> blockedFromSite(
   };
 }
 
+/// The most pages of a block list read before giving up.
+const _maxPages = 100;
+
 /// What [api]'s account has blocked, as `name@host`.
 Future<Set<String>> listBlocked(
   API api,
   String accountHost, {
   required bool users,
+  bool Function()? cancelled,
 }) async {
   if (api.client.software != ServerSoftware.mbin) {
     final site = (await api.client.get('/site')).bodyJson;
@@ -47,7 +51,10 @@ Future<Set<String>> listBlocked(
   }
   final names = <String>{};
   String? page;
+  var pages = 0;
   do {
+    if (cancelled?.call() ?? false) return names;
+    if (++pages > _maxPages) throw Exception('Too many pages of blocks');
     if (users) {
       final res = await api.users.list(
         page: page,

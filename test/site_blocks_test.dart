@@ -1,5 +1,12 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:interstellar/src/api/api.dart';
 import 'package:interstellar/src/api/blocks.dart';
+import 'package:interstellar/src/api/client.dart';
+import 'package:interstellar/src/controller/server.dart';
 
 void main() {
   piefedTests();
@@ -103,5 +110,45 @@ void piefedTests() {
         isA<Exception>().having((e) => e.toString(), 'text', contains('name')),
       ),
     );
+  });
+
+  group('Mbin blocked lists', () {
+    API mbin(int Function() count) => API(
+      ServerClient(
+        httpClient: MockClient((r) async {
+          count();
+          return http.Response(
+            jsonEncode({
+              'items': <Object?>[],
+              'pagination': {'currentPage': 1, 'maxPage': 1000000},
+            }),
+            200,
+          );
+        }),
+        software: ServerSoftware.mbin,
+        domain: 'home.example',
+      ),
+    );
+
+    test('a server that never ends its pages is stopped with an error', () {
+      var asked = 0;
+      expect(
+        listBlocked(mbin(() => ++asked), 'home.example', users: true),
+        throwsException,
+      );
+      expect(asked, lessThanOrEqualTo(101));
+    });
+
+    test('Cancel ends the paging', () async {
+      var asked = 0;
+      final names = await listBlocked(
+        mbin(() => ++asked),
+        'home.example',
+        users: true,
+        cancelled: () => asked >= 2,
+      );
+      expect(names, isEmpty);
+      expect(asked, 2);
+    });
   });
 }

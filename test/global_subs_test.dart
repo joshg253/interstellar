@@ -56,6 +56,7 @@ void main() {
   masterTests();
   simpleTests();
   networkTests();
+  cacheTests();
   test('fetching stores each account and survives a restart', () async {
     final store = _MemStore();
     final c = _make(
@@ -973,5 +974,111 @@ void networkTests() {
     await c.load();
     await c.fetchAccounts([a], kinds: [SubsKind.communities]);
     expect(calls, 1);
+  });
+}
+
+/// Writes that record how many ran at once and may fail.
+class _SlowStore extends _MemStore {
+  int active = 0;
+  int peak = 0;
+  bool fail = false;
+
+  @override
+  Future<void> write(Map<String, dynamic> d) async {
+    active++;
+    if (active > peak) peak = active;
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    active--;
+    if (fail) throw const FileSystemException('disk full');
+    data = d;
+  }
+}
+
+GlobalSubsController _plain(_MemStore store) => GlobalSubsController(
+  store: store,
+  fetch: (account, kind, cancelled) async => {'c@x.example'},
+  apply: (account, kind, name, state) async {},
+);
+
+void cacheTests() {
+  test('cache writes run one at a time', () async {
+    final store = _SlowStore();
+    final c = _plain(store);
+    await c.load();
+    await c.fetchAccounts([a], kinds: [SubsKind.communities]);
+    await Future.wait([
+      c.setOne(a, SubsKind.communities, 'd@x.example', true),
+      c.setOne(a, SubsKind.communities, 'e@x.example', true),
+      c.setDead(['gone.example']),
+    ]);
+    expect(store.peak, 1);
+    final d = store.data!['kinds']['communities']['accounts'][a]['subs'];
+    expect(d, containsAll(['c@x.example', 'd@x.example', 'e@x.example']));
+  });
+
+  test('a cache write that fails does not leave a job running', () async {
+    final store = _SlowStore()..fail = true;
+    final c = _plain(store);
+    await c.load();
+    await c.fetchAccounts([a], kinds: [SubsKind.communities]);
+    expect(c.running, isFalse);
+    expect(c.failures.single, contains('save'));
+    expect(c.snapshots[SubsKind.communities]![a], isNotNull);
+  });
+
+  test('one unreadable server record keeps the rest of the cache', () async {
+    final store = _MemStore()
+      ..data = {
+        'version': 2,
+        'dead': ['gone.example'],
+        'hostProblems': {
+          'bad.example': {'kind': 'renamed'},
+        },
+        'kinds': {
+          'communities': {
+            'accounts': {
+              a: {
+                'subs': ['c@x.example'],
+                'updated': DateTime.now().toIso8601String(),
+              },
+            },
+          },
+        },
+      };
+    final c = _plain(store);
+    await c.load();
+    expect(c.problems, isEmpty);
+    expect(c.dead, {'gone.example'});
+    expect(c.snapshots[SubsKind.communities]![a]!.subs, {'c@x.example'});
+  });
+
+  test('server names match whatever their case', () async {
+    final c = _plain(_MemStore());
+    await c.load();
+    await c.setDead(['Lemmy.Example']);
+    expect(c.isDead('c@LEMMY.example'), isTrue);
+  });
+
+  test('a plan treats names that differ only in case as the same', () async {
+    final c = _plain(_MemStore());
+    await c.load();
+    await c.fetchAccounts([a, b], kinds: [SubsKind.communities]);
+    c.snapshots[SubsKind.communities]![a] = AccountSnapshot({
+      'Foo@x.example',
+    }, DateTime.now());
+    c.snapshots[SubsKind.communities]![b] = AccountSnapshot({
+      'foo@x.example',
+    }, DateTime.now());
+    final plan = c.replacePlan(SubsKind.communities, a, [b]);
+    expect(plan, isEmpty);
+  });
+
+  test('removing from the global list leaves unset lists unset', () async {
+    final c = _plain(_MemStore());
+    await c.load();
+    await c.fetchAccounts([a], kinds: [SubsKind.communities]);
+    await c.rebuildMaster(SubsKind.communities);
+    await c.editMaster(SubsKind.communityBlocks, remove: const <String>[]);
+    expect(c.master[SubsKind.communityBlocks], isNull);
   });
 }
