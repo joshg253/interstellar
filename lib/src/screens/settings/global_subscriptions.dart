@@ -151,6 +151,12 @@ class _GlobalSubscriptionsScreenState extends State<GlobalSubscriptionsScreen> {
   }
 
   String _info(BuildContext context, GlobalSubsController subs, String a) {
+    final paused = subs.pausedUntil[a];
+    if (paused != null && paused.isAfter(DateTime.now())) {
+      return l(
+        context,
+      ).globalSubs_waiting(globalSubsWhen(paused).substring(11));
+    }
     final c = subs.snapshots[SubsKind.communities]![a];
     final cb = subs.snapshots[SubsKind.communityBlocks]![a];
     final ub = subs.snapshots[SubsKind.userBlocks]![a];
@@ -240,23 +246,48 @@ class _GlobalSubscriptionsScreenState extends State<GlobalSubscriptionsScreen> {
         builder: (context, _) {
           return ListView(
             children: [
-              if (subs.master.isEmpty)
-                ListTile(
-                  leading: const Icon(Icons.save_outlined),
-                  title: Text(l(context).globalSubs_notSaved),
+              ListTile(
+                leading: const Icon(Icons.cloud_done_outlined),
+                title: Text(
+                  subs.lastFetched == null
+                      ? l(context).globalSubs_notFetched
+                      : l(context).globalSubs_fetchedAt(
+                          globalSubsWhen(subs.lastFetched!),
+                        ),
                 ),
-              for (final kind in SubsKind.values)
-                if (subs.master[kind] != null)
-                  ListTile(
-                    leading: const Icon(Icons.save_outlined),
-                    title: Text(
-                      l(context).globalSubs_saved(
-                        globalSubsKindLabel(context, kind),
-                        subs.master[kind]!.length,
-                        globalSubsWhen(subs.masterUpdated[kind]!),
+                trailing: FilledButton.tonal(
+                  onPressed: subs.running || chosen.isEmpty
+                      ? null
+                      : () => subs.fetchAccounts(chosen),
+                  child: Text(l(context).globalSubs_fetchShort),
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.save_outlined),
+                title: Text(l(context).globalSubs_masterTitle),
+                subtitle: subs.master.isEmpty
+                    ? Text(l(context).globalSubs_notSaved)
+                    : Text(
+                        [
+                          for (final kind in SubsKind.values)
+                            if (subs.master[kind] != null)
+                              l(context).globalSubs_masterInfo(
+                                globalSubsKindLabel(context, kind),
+                                subs.master[kind]!.length,
+                                globalSubsWhen(subs.masterUpdated[kind]!),
+                              ),
+                        ].join('\n'),
                       ),
-                    ),
-                  ),
+                isThreeLine: subs.master.length > 1,
+                trailing: FilledButton.tonal(
+                  onPressed: subs.hasData
+                      ? () => context.router.push(
+                          const GlobalSubscriptionsListRoute(),
+                        )
+                      : null,
+                  child: Text(l(context).globalSubs_editShort),
+                ),
+              ),
               if (subs.running) ...[
                 ListTile(
                   title: Text(
@@ -324,21 +355,6 @@ class _GlobalSubscriptionsScreenState extends State<GlobalSubscriptionsScreen> {
                   ],
                 ),
               const Divider(),
-              ListTile(
-                leading: const Icon(Icons.cloud_download_outlined),
-                title: Text(l(context).globalSubs_fetch),
-                subtitle: Text(l(context).globalSubs_fetch_help),
-                enabled: !subs.running && chosen.isNotEmpty,
-                onTap: () => subs.fetchAccounts(chosen),
-              ),
-              ListTile(
-                leading: const Icon(Icons.edit_note),
-                title: Text(l(context).globalSubs_editMaster),
-                subtitle: Text(l(context).globalSubs_editMaster_help),
-                enabled: subs.hasData,
-                onTap: () =>
-                    context.router.push(const GlobalSubscriptionsListRoute()),
-              ),
               ListTile(
                 leading: const Icon(Icons.compare_arrows),
                 title: Text(l(context).globalSubs_compare),

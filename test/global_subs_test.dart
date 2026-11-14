@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:interstellar/src/api/host_check.dart';
 import 'package:interstellar/src/controller/global_subs.dart';
 
 class _MemStore implements SubsStore {
@@ -72,6 +73,7 @@ void main() {
     await c.load();
     await c.fetchAccounts([a, b]);
     expect(c.running, isFalse);
+    expect(c.lastFetched, isNotNull);
     expect(c.snapshots[SubsKind.communities]![a]!.subs, hasLength(2));
     expect(c.merged(SubsKind.communities), {'one@x.example', 'two@y.example'});
     expect(c.merged(SubsKind.userBlocks), {'bob@z.example'});
@@ -219,6 +221,194 @@ void tableTests() {
 }
 
 void parallelTests() {
+  test(
+    'failing servers are tracked across checks and cleared when fixed',
+    () async {
+      final c = GlobalSubsController(
+        store: _MemStore(),
+        fetch: (account, kind, cancelled) async => kind != SubsKind.communities
+            ? <String>{}
+            : {
+                'one@up.example',
+                'two@gone.example',
+                'three@gone.example',
+                'four@broken.example',
+                'five@flaky.example',
+              },
+        apply: (account, kind, name, state) async {},
+      );
+      await c.load();
+      await c.fetchAccounts([a]);
+      await c.rebuildAllMasters();
+      var flakyUp = false;
+      Future<({HostFailure kind, String detail})?> probe(String host) async {
+        if (host == 'broken.example') throw StateError('boom');
+        if (host == 'flaky.example') {
+          return flakyUp ? null : (kind: HostFailure.http, detail: 'HTTP 403');
+        }
+        return host == 'up.example'
+            ? null
+            : (kind: HostFailure.network, detail: 'no host');
+      }
+
+      var last = 0;
+      await c.checkHosts(probe, onProgress: (d, t) => last = d * 100 + t);
+      expect(last, 404);
+      expect(c.problems.keys.toSet(), {
+        'gone.example',
+        'broken.example',
+        'flaky.example',
+      });
+      expect(c.problems['flaky.example']!.kind, HostFailure.http);
+      expect(c.entriesOn('gone.example'), 2);
+      final since = c.problems['gone.example']!.since;
+      flakyUp = true;
+      await c.checkHosts(probe);
+      expect(c.problems['gone.example']!.checks, 2);
+      expect(c.problems['gone.example']!.since, since);
+      expect(c.problems.containsKey('flaky.example'), isFalse);
+      await c.setDead(['gone.example']);
+      expect(c.problems.containsKey('gone.example'), isFalse);
+      expect(
+        c.master[SubsKind.communities],
+        isNot(contains('two@gone.example')),
+      );
+    },
+  );
+
+  test('purging can also remove the entries from the accounts', () async {
+    final srv = <String, Set<String>>{
+      a: {'one@x.example', 'gone@dead.example', 'stuck@dead.example'},
+      b: {'one@x.example', 'gone@dead.example'},
+    };
+    final c = GlobalSubsController(
+      store: _MemStore(),
+      fetch: (account, kind, cancelled) async =>
+          kind == SubsKind.communities ? {...?srv[account]} : <String>{},
+      apply: (account, kind, name, state) async {
+        if (name.startsWith('stuck')) throw StateError('refused');
+        if (!state) srv[account]!.remove(name);
+      },
+    );
+    await c.load();
+    await c.fetchAccounts([a, b]);
+    await c.rebuildAllMasters();
+    expect(c.heldOnAccounts({'dead.example'}), 3);
+    await c.purge(['dead.example'], removeFromAccounts: true);
+    expect(srv[a], {'one@x.example', 'stuck@dead.example'});
+    expect(srv[b], {'one@x.example'});
+    expect(c.failures, hasLength(1));
+    expect(c.master[SubsKind.communities], {'one@x.example'});
+    expect(c.dead, {'dead.example'});
+  });
+
+  test('a server asking us to wait holds back the whole account', () async {
+    final srv = <String, Set<String>>{a: {}};
+    final calls = <int>[];
+    final clock = Stopwatch()..start();
+    var refused = false;
+    final c = GlobalSubsController(
+      store: _MemStore(),
+      fetch: (account, kind, cancelled) async => {...?srv[account]},
+      apply: (account, kind, name, state) async {
+        calls.add(clock.elapsedMilliseconds);
+        if (!refused) {
+          refused = true;
+          throw Exception('Request failed with status 429 (retry after 1s)');
+        }
+        srv[account]!.add(name);
+      },
+      retryDelay: const Duration(milliseconds: 50),
+    );
+    await c.load();
+    await c.fetchAccounts([a]);
+    await c.setMany(
+      SubsKind.communities,
+      [for (var i = 0; i < 8; i++) 'c$i@x.example'],
+      [a],
+      true,
+    );
+    expect(srv[a], hasLength(8));
+    // The three workers started together; everything after waited for the
+    // pause.
+    expect(calls.skip(3).every((t) => t >= 900), isTrue);
+    expect(c.failures, isEmpty);
+    expect(retryAfterOf('x (retry after 30s)'), const Duration(seconds: 30));
+    expect(retryAfterOf('status 429'), isNull);
+  });
+
+  test('dead servers drop out of the lists, plans and the file', () async {
+    final store = _MemStore();
+    final srv = <String, Set<String>>{
+      a: {'one@x.example', 'gone@dead.example'},
+      b: {'one@x.example'},
+    };
+    GlobalSubsController make() => GlobalSubsController(
+      store: store,
+      fetch: (account, kind, cancelled) async => {...?srv[account]},
+      apply: (account, kind, name, state) async {
+        (srv[account] ??= {}).add(name);
+      },
+    );
+    final c = make();
+    await c.load();
+    await c.fetchAccounts([a, b]);
+    await c.rebuildAllMasters();
+    expect(c.master[SubsKind.communities], contains('gone@dead.example'));
+    await c.setDead([' Dead.example ']);
+    expect(c.master[SubsKind.communities], {'one@x.example'});
+    expect(c.merged(SubsKind.communities), {'one@x.example'});
+    expect(c.missingFor(SubsKind.communities, b), isEmpty);
+    expect(c.masterPlan(SubsKind.communities, [a, b]), isEmpty);
+    final again = make();
+    await again.load();
+    expect(again.dead, {'dead.example'});
+  });
+
+  test('syncing missing follows the global list once there is one', () async {
+    final srv = <String, Set<String>>{
+      a: {'one@x.example', 'dead@x.example'},
+      b: {'one@x.example'},
+    };
+    final c = GlobalSubsController(
+      store: _MemStore(),
+      fetch: (account, kind, cancelled) async => {...?srv[account]},
+      apply: (account, kind, name, state) async {
+        (srv[account] ??= {}).add(name);
+      },
+    );
+    await c.load();
+    await c.fetchAccounts([a, b]);
+    expect(c.missingFor(SubsKind.communities, b), {'dead@x.example'});
+    await c.editMaster(
+      SubsKind.communities,
+      add: ['one@x.example', 'new@x.example'],
+    );
+    expect(c.missingFor(SubsKind.communities, b), {'new@x.example'});
+    await c.syncMissing(SubsKind.communities, [a, b], only: b);
+    expect(srv[b], {'one@x.example', 'new@x.example'});
+  });
+
+  test('one account fetches its lists at the same time', () async {
+    var running = 0;
+    var peak = 0;
+    final c = GlobalSubsController(
+      store: _MemStore(),
+      fetch: (account, kind, cancelled) async {
+        running++;
+        if (running > peak) peak = running;
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+        running--;
+        return <String>{};
+      },
+      apply: (account, kind, name, state) async {},
+    );
+    await c.load();
+    await c.fetchAccounts([a, b]);
+    expect(peak, 2 * SubsKind.values.length);
+    expect(c.accountDone[a], SubsKind.values.length);
+  });
+
   test('one account syncs several items at once, but never too many', () async {
     var running = 0;
     var peak = 0;
