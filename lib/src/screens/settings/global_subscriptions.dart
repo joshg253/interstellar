@@ -168,6 +168,53 @@ class _GlobalSubscriptionsScreenState extends State<GlobalSubscriptionsScreen> {
     );
   }
 
+  /// Makes [account] match the global list in the chosen lists, after saying
+  /// how much that adds and removes.
+  Future<void> _replace(
+    GlobalSubsController subs,
+    String account,
+    String which,
+  ) async {
+    final kinds = switch (which) {
+      'subs' => [SubsKind.communities],
+      'blocks' => [SubsKind.communityBlocks, SubsKind.userBlocks],
+      _ => SubsKind.values,
+    };
+    if (kinds.every((k) => subs.master[k] == null)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l(context).globalSubs_noGlobalList)),
+      );
+      return;
+    }
+    var adds = 0;
+    var removes = 0;
+    for (final kind in kinds) {
+      final plan = subs.masterPlan(kind, [account])[account];
+      adds += plan?.add.length ?? 0;
+      removes += plan?.remove.length ?? 0;
+    }
+    if (adds + removes == 0) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(account),
+        content: Text(l(context).globalSubs_replaceConfirm(adds, removes, 1)),
+        actions: [
+          OutlinedButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(l(context).cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(l(context).continue_),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    subs.applyMaster(kinds, [account]);
+  }
+
   IconData _icon(JobStep? step) => switch (step) {
     JobStep.done => Icons.check_circle_outline,
     JobStep.failed => Icons.error_outline,
@@ -224,20 +271,44 @@ class _GlobalSubscriptionsScreenState extends State<GlobalSubscriptionsScreen> {
               ],
               const Divider(),
               for (final account in accounts) ...[
-                CheckboxListTile(
-                  value: !_unchecked.contains(account),
-                  onChanged: subs.running
-                      ? null
-                      : (v) => setState(
-                          () => (v ?? false)
-                              ? _unchecked.remove(account)
-                              : _unchecked.add(account),
-                        ),
-                  secondary: subs.steps.containsKey(account)
-                      ? Icon(_icon(subs.steps[account]))
-                      : null,
+                ListTile(
+                  leading: Checkbox(
+                    value: !_unchecked.contains(account),
+                    onChanged: subs.running
+                        ? null
+                        : (v) => setState(
+                            () => (v ?? false)
+                                ? _unchecked.remove(account)
+                                : _unchecked.add(account),
+                          ),
+                  ),
                   title: Text(account),
                   subtitle: Text(_info(context, subs, account)),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (subs.steps.containsKey(account))
+                        Icon(_icon(subs.steps[account])),
+                      PopupMenuButton<String>(
+                        enabled: !subs.busy.contains(account),
+                        onSelected: (v) => _replace(subs, account, v),
+                        itemBuilder: (context) => [
+                          PopupMenuItem(
+                            value: 'subs',
+                            child: Text(l(context).globalSubs_replaceSubs),
+                          ),
+                          PopupMenuItem(
+                            value: 'blocks',
+                            child: Text(l(context).globalSubs_replaceBlocks),
+                          ),
+                          PopupMenuItem(
+                            value: 'all',
+                            child: Text(l(context).globalSubs_replaceAll),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
                 globalSubsAccountBar(subs, account),
               ],
@@ -261,11 +332,12 @@ class _GlobalSubscriptionsScreenState extends State<GlobalSubscriptionsScreen> {
                 onTap: () => subs.fetchAccounts(chosen),
               ),
               ListTile(
-                leading: const Icon(Icons.merge_type),
-                title: Text(l(context).globalSubs_saveMerged),
-                subtitle: Text(l(context).globalSubs_saveMerged_help),
-                enabled: !subs.running && subs.hasData,
-                onTap: subs.saveMerged,
+                leading: const Icon(Icons.edit_note),
+                title: Text(l(context).globalSubs_editMaster),
+                subtitle: Text(l(context).globalSubs_editMaster_help),
+                enabled: subs.hasData,
+                onTap: () =>
+                    context.router.push(const GlobalSubscriptionsListRoute()),
               ),
               ListTile(
                 leading: const Icon(Icons.compare_arrows),

@@ -5,7 +5,9 @@ import 'package:interstellar/src/screens/explore/explore_screen.dart';
 import 'package:interstellar/src/utils/utils.dart';
 
 String _named(Map<String, dynamic> actor, String accountHost) {
-  final name = actor['name']! as String;
+  // Lemmy calls a person's name `name`; PieFed calls it `user_name`.
+  final name = (actor['name'] ?? actor['user_name']) as String?;
+  if (name == null) throw Exception('Blocked entry has no name');
   final id = Uri.tryParse(actor['actor_id'] as String? ?? '');
   final host = id == null || id.host.isEmpty ? accountHost : id.host;
   return normalizeName(name, host);

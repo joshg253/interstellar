@@ -755,6 +755,55 @@
   },
   "globalSubs_onlyDifferences": "Only differences",
   "globalSubs_search": "Search",
+  "globalSubs_replaceSubs": "Replace subscriptions with the global list",
+  "globalSubs_replaceBlocks": "Replace blocks with the global list",
+  "globalSubs_replaceAll": "Replace everything with the global list",
+  "globalSubs_noGlobalList": "Make the global list first: Edit the global list, then Rebuild from accounts.",
+  "globalSubs_editMaster": "Edit the global list",
+  "globalSubs_editMaster_help": "Edit one saved list, then make chosen accounts match it",
+  "globalSubs_masterTitle": "Global list",
+  "globalSubs_masterNone": "No global list yet. Fetch from the servers, then rebuild it from the accounts.",
+  "globalSubs_masterInfo": "{kind}: {count} entries, updated {when}",
+  "@globalSubs_masterInfo": {
+    "placeholders": {
+      "kind": { "type": "String" },
+      "count": { "type": "int" },
+      "when": { "type": "String" }
+    }
+  },
+  "globalSubs_rebuild": "Rebuild from accounts",
+  "globalSubs_rebuildConfirm": "Replace the global list with what the accounts hold now? Your edits to it are lost.",
+  "globalSubs_addEntry": "Add entry",
+  "globalSubs_removeSelected": "Remove {count}",
+  "@globalSubs_removeSelected": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "globalSubs_applyTo": "Apply to accounts…",
+  "globalSubs_matchAnother": "Make this match another account…",
+  "globalSubs_copyToOthers": "Replace the other accounts' lists with this one",
+  "globalSubs_clearList": "Clear this list ({count})",
+  "@globalSubs_clearList": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "globalSubs_pickSource": "Copy from which account?",
+  "globalSubs_replaceConfirm": "Add {adds} and remove {removes} across {accounts} account(s)? The result is a list identical to the source.",
+  "@globalSubs_replaceConfirm": {
+    "placeholders": {
+      "adds": { "type": "int" },
+      "removes": { "type": "int" },
+      "accounts": { "type": "int" }
+    }
+  },
+  "globalSubs_clearConfirm": "Remove all {count} entries of this list from this account?",
+  "@globalSubs_clearConfirm": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
   "globalSubs_addToAll": "Add to all accounts",
   "globalSubs_removeFromAll": "Remove from all accounts",
   "globalSubs_addResultsToAll": "Add these {count} to all accounts",
