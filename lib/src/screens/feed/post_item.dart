@@ -109,9 +109,11 @@ class _PostItemState extends State<PostItem> {
           title: widget.item.title,
           // A list preview shows the body as plain text, so an image written
           // in it becomes the preview image instead of raw markdown.
-          images:
-              widget.item.images ??
-              (_bodyPreview ? [?firstMarkdownImage(widget.item.body)] : null),
+          images: postPreviewImages(
+            widget.item.images,
+            widget.item.body,
+            bodyPreview: _bodyPreview,
+          ),
           link: widget.item.url != null ? Uri.parse(widget.item.url!) : null,
           embeddedVideo: embeddedVideoFile(widget.item.embedVideoUrl),
           body: _bodyPreview ? previewText(widget.item.body) : widget.item.body,

@@ -429,7 +429,7 @@ class _ContentItemState extends State<ContentItem> {
             final isThumbnail =
                 !isVideo &&
                 ((constraints.maxWidth > 800 && !widget.fullImageSize) ||
-                    (widget.images?.first.blurHashWidth ?? 500) <= 800 &&
+                    (widget.images?.firstOrNull?.blurHashWidth ?? 500) <= 800 &&
                         widget.link != null);
             final image = getImage(
               context,
@@ -803,7 +803,7 @@ class _ContentItemState extends State<ContentItem> {
     bool isThumbnail = false,
     bool compact = false,
   }) {
-    if (widget.images == null) return null;
+    if (widget.images == null || widget.images!.isEmpty) return null;
     final fullImage = !isThumbnail && widget.fullImageSize;
     final imageSize =
         (compact

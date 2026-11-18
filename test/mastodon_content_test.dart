@@ -180,7 +180,7 @@ void main() {
         _host,
       );
 
-      expect(post.images?.firstOrNull, isNull);
+      expect(post.images, isNull);
     });
 
     test('an attachment falls back to its remote url', () {
@@ -212,7 +212,7 @@ void main() {
         _host,
       );
 
-      expect(post.images?.firstOrNull, isNull);
+      expect(post.images, isNull);
     });
 
     test('a video or gifv is a player in the body, not an image', () {
@@ -228,7 +228,7 @@ void main() {
         _host,
       );
 
-      expect(post.images?.firstOrNull, isNull);
+      expect(post.images, isNull);
       expect(
         post.body,
         'Hello\n\n![video/mp4](https://cdn.example.com/g.mp4)'

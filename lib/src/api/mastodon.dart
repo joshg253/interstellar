@@ -205,6 +205,12 @@ ImageModel? _image(List<JsonMap> media) {
   return null;
 }
 
+/// The post's first image as the images list, or null (never empty).
+List<ImageModel>? _images(List<JsonMap> media) {
+  final image = _image(media);
+  return image == null ? null : [image];
+}
+
 /// Video and gifv attachments (a gifv is a looping mp4) as markdown the body's
 /// video player renders.
 String _videos(List<JsonMap> media) => [
@@ -298,9 +304,7 @@ PostModel mastodonPost(JsonMap json, String domain) {
     domain: null,
     title: null,
     url: null,
-    images: [
-      ?_image(((s['media_attachments'] as List?) ?? []).cast<JsonMap>()),
-    ],
+    images: _images(((s['media_attachments'] as List?) ?? []).cast<JsonMap>()),
     body: cardLink == null ? _body(s) : '${_body(s)}\n\n$cardLink',
     lang: s['language'] as String?,
     numComments: (s['replies_count'] as int?) ?? 0,
