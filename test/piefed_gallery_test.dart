@@ -55,14 +55,17 @@ void main() {
       }),
       langCodeIdPairs: const [],
     );
-    expect(post.gallery, [
+    expect(post.images?.map((i) => i.src), [
       'https://img.example/a.jpg',
       'https://img.example/b.jpg',
     ]);
   });
 
   test('a post without a gallery has none', () {
-    final post = PostModel.fromPiefed(_post({}), langCodeIdPairs: const []);
-    expect(post.gallery, isEmpty);
+    final post = PostModel.fromPiefed(
+      _post({'post_type': 'Link'}),
+      langCodeIdPairs: const [],
+    );
+    expect(post.images, isNull);
   });
 }

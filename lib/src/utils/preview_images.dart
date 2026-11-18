@@ -40,8 +40,8 @@ final _link = RegExp(r'\[([^\]]*)\]\(\s*<?[^)\s>]*>?(?:\s+"[^"]*")?\s*\)');
 final _marks = <RegExp>[
   RegExp(r'<[^>\n]+>'),
   RegExp(r'\*\*(.+?)\*\*'),
-  RegExp(r'__(.+?)__'),
-  RegExp(r'~~(.+?)~~'),
+  RegExp('__(.+?)__'),
+  RegExp('~~(.+?)~~'),
   RegExp(r'`([^`\n]+)`'),
   RegExp(r'(?<![\w*])\*(?!\s)([^*\n]+?)(?<!\s)\*(?![\w*])'),
   RegExp(r'(?<![\w_])_(?!\s)([^_\n]+?)(?<!\s)_(?![\w_])'),
@@ -64,4 +64,16 @@ String? previewText(String? body) {
   }
   text = text!.trim();
   return text.isEmpty ? null : text;
+}
+
+/// The images a feed item shows: its own, else (in a list preview) the first
+/// image written in the body. Null, never empty, when there is none.
+List<ImageModel>? postPreviewImages(
+  List<ImageModel>? images,
+  String? body, {
+  required bool bodyPreview,
+}) {
+  if (images != null && images.isNotEmpty) return images;
+  final fromBody = bodyPreview ? firstMarkdownImage(body) : null;
+  return fromBody == null ? null : [fromBody];
 }

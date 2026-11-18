@@ -21,7 +21,7 @@ String communityKey(String? apId, String name, String accountHost) {
 
 /// One item as seen by every account that has it.
 class Union<T> {
-  Union(this.key);
+  new(this.key);
 
   final String key;
 
@@ -41,8 +41,10 @@ List<Union<T>> unionByKey<T>(
   for (final entry in perAccount.entries) {
     for (final item in entry.value) {
       final key = keyOf(entry.key, item);
-      byKey.putIfAbsent(key, () => Union<T>(key))
-        ..byAccount.putIfAbsent(entry.key, () => item);
+      byKey
+          .putIfAbsent(key, () => Union<T>(key))
+          .byAccount
+          .putIfAbsent(entry.key, () => item);
     }
   }
   return byKey.values.toList();
@@ -97,7 +99,7 @@ fetchGlobalSubscriptions(AppController ac) async {
 /// The Combined view's drawer: a global list of subscriptions across all
 /// accounts, each showing which accounts follow it.
 class GlobalSubscriptionsDrawer extends StatelessWidget {
-  const GlobalSubscriptionsDrawer({
+  const new({
     required this.communities,
     required this.loading,
     required this.errors,

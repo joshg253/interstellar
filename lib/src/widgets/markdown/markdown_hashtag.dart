@@ -10,7 +10,7 @@ class HashtagMarkdownSyntax extends md.InlineSyntax {
   // The base class compiles its pattern without the unicode flag, so [pattern]
   // is overridden with one that has it; '#' only serves as the cheap first
   // check.
-  HashtagMarkdownSyntax() : super('#', startCharacter: 0x23);
+  new() : super('#', startCharacter: 0x23);
 
   /*
     This expression checks the following:
@@ -49,7 +49,7 @@ class HashtagMarkdownSyntax extends md.InlineSyntax {
 }
 
 class HashtagMarkdownBuilder extends mdf.MarkdownElementBuilder {
-  HashtagMarkdownBuilder();
+  new();
 
   @override
   Widget? visitElementAfter(md.Element element, TextStyle? preferredStyle) {
@@ -67,7 +67,7 @@ class HashtagMarkdownBuilder extends mdf.MarkdownElementBuilder {
 }
 
 class HashtagWidget extends StatelessWidget {
-  const HashtagWidget(this.tag, {super.key});
+  const new(this.tag, {super.key});
 
   final String tag;
 

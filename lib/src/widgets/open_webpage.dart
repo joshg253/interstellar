@@ -51,7 +51,7 @@ enum LinkAction {
   }
 }
 
-/// Whether [host] runs Lemmy, PieFed or Mbin, remembered for the session.
+/// Whether `host` runs Lemmy, PieFed or Mbin, remembered for the session.
 final Map<String, Future<bool>> _fediHosts = {};
 
 Future<bool> _isFediHost(AppController ac, String host) {
@@ -61,9 +61,8 @@ Future<bool> _isFediHost(AppController ac, String host) {
   return _fediHosts.putIfAbsent(host, () async {
     try {
       // A host that does not answer soon is not asked again only this time.
-      final software = await getServerSoftware(
-        host,
-      ).timeout(const Duration(seconds: 5));
+      final software = await getServerSoftware(host)
+          .timeout(const Duration(seconds: 5));
       return software != null && software != ServerSoftware.mastodon;
     } on TimeoutException {
       unawaited(Future<void>.microtask(() => _fediHosts.remove(host)));
@@ -205,7 +204,7 @@ void openWebpageSecondary(BuildContext context, Uri uri) => showDialog<String>(
 
 @RoutePage()
 class WebViewScreen extends StatelessWidget {
-  const WebViewScreen({required this.controller, super.key});
+  const new({required this.controller, super.key});
 
   final WebViewController controller;
 

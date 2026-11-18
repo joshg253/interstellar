@@ -5,7 +5,6 @@ import 'package:http/http.dart' as http;
 import 'package:interstellar/src/utils/globals.dart';
 import 'package:interstellar/src/utils/platform/platform.dart';
 import 'package:interstellar/src/utils/utils.dart';
-import 'package:path/path.dart';
 import 'package:share_plus/share_plus.dart';
 
 Future<ShareResult> shareUri(Uri uri) async {
@@ -21,10 +20,7 @@ Future<ShareResult> shareFile(Uri uri, String filename) async {
 
   final file = XFile.fromData(response.bodyBytes);
 
-  final params = ShareParams(
-    files: [file],
-    fileNameOverrides: [basename(uri.toString())],
-  );
+  final params = ShareParams(files: [file], fileNameOverrides: [filename]);
   final result = await SharePlus.instance.share(params);
 
   return result;

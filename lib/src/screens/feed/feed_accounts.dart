@@ -8,7 +8,7 @@ import 'package:provider/provider.dart';
 /// host, the original Feed and the merged view, so ticking accounts in one
 /// place is seen by all of them.
 class FeedAccounts extends ChangeNotifier {
-  FeedAccounts(Set<String> initial) : _included = {...initial};
+  new(Set<String> initial) : _included = {...initial};
 
   Set<String> _included;
 

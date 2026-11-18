@@ -7,6 +7,7 @@ import 'package:flutter_blurhash/flutter_blurhash.dart';
 import 'package:interstellar/src/controller/controller.dart';
 import 'package:interstellar/src/controller/router.gr.dart';
 import 'package:interstellar/src/models/image.dart';
+import 'package:interstellar/src/utils/file_names.dart';
 import 'package:interstellar/src/utils/share.dart';
 import 'package:interstellar/src/utils/utils.dart';
 import 'package:interstellar/src/widgets/blur.dart';
@@ -17,7 +18,7 @@ import 'package:material_symbols_icons/symbols.dart';
 import 'package:provider/provider.dart';
 
 class AdvancedImage extends StatelessWidget {
-  const AdvancedImage(
+  const new(
     this.image, {
     super.key,
     this.fit = BoxFit.contain,
@@ -121,7 +122,7 @@ class AdvancedImage extends StatelessWidget {
 
 @RoutePage()
 class AdvancedImagePage extends StatefulWidget {
-  const AdvancedImagePage(
+  const new(
     this.image, {
     required this.title,
     super.key,
@@ -148,9 +149,8 @@ class _AdvancedImagePageState extends State<AdvancedImagePage> {
   Widget build(BuildContext context) {
     const shadows = <Shadow>[Shadow(blurRadius: 1, offset: Offset(0, 1))];
 
-    final titleStyle = Theme.of(
-      context,
-    ).textTheme.titleLarge!.copyWith(shadows: shadows);
+    final titleStyle = Theme.of(context).textTheme.titleLarge!
+        .copyWith(shadows: shadows);
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -164,7 +164,7 @@ class _AdvancedImagePageState extends State<AdvancedImagePage> {
               await downloadFile(
                 context,
                 Uri.parse(widget.image.src),
-                widget.image.src.split('/').last,
+                imageFileName(widget.image.src),
                 defaultDir: context.read<AppController>().defaultDownloadDir,
               );
             },
@@ -172,7 +172,7 @@ class _AdvancedImagePageState extends State<AdvancedImagePage> {
               await downloadFile(
                 context,
                 Uri.parse(widget.image.src),
-                widget.image.src.split('/').last,
+                imageFileName(widget.image.src),
               );
             },
             icon: const Icon(Symbols.download_rounded),
@@ -181,7 +181,7 @@ class _AdvancedImagePageState extends State<AdvancedImagePage> {
             LoadingIconButton(
               onPressed: () async => shareFile(
                 Uri.parse(widget.image.src),
-                widget.image.src.split('/').last,
+                imageFileName(widget.image.src),
               ),
               icon: const Icon(Symbols.share_rounded),
             ),
@@ -229,4 +229,87 @@ class _AdvancedImagePageState extends State<AdvancedImagePage> {
       ),
     );
   }
+}
+
+class ImageGallery extends StatefulWidget {
+  const new(
+    this.images, {
+    this.fit = BoxFit.contain,
+    this.openTitle,
+    this.enableBlur = false,
+    this.hero,
+    super.key,
+  });
+
+  final List<ImageModel> images;
+  final BoxFit fit;
+  final String? openTitle;
+  final bool enableBlur;
+  final String? hero;
+
+  @override
+  State<ImageGallery> createState() => _ImageGalleryState();
+}
+
+class _ImageGalleryState extends State<ImageGallery> {
+  int _currentIndex = 0;
+
+  bool get _hasPrev => _currentIndex > 0;
+  bool get _hasNext => _currentIndex < widget.images.length - 1;
+
+  void _switch(int index) {
+    if (index >= widget.images.length || index < 0) return;
+    setState(() => _currentIndex = index);
+  }
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onHorizontalDragEnd: (details) {
+      if (details.velocity.pixelsPerSecond.dx > 10) {
+        _switch(_currentIndex - 1);
+      } else if (details.velocity.pixelsPerSecond.dx < -10) {
+        _switch(_currentIndex + 1);
+      }
+    },
+    child: Stack(
+      alignment: Alignment.center,
+      children: [
+        AnimatedSwitcher(
+          duration: Durations.long1,
+          child: IndexedStack(
+            key: ValueKey(_currentIndex),
+            index: _currentIndex,
+            alignment: Alignment.center,
+            children: widget.images
+                .map(
+                  (i) => AdvancedImage(
+                    i.copyWith(blurHashHeight: 100),
+                    openTitle: widget.openTitle,
+                    fit: widget.fit,
+                    enableBlur: widget.enableBlur,
+                    hero: AdvancedImage.getHeroTag(),
+                  ),
+                )
+                .toList(),
+          ),
+        ),
+        if (_hasPrev)
+          Positioned(
+            left: 8,
+            child: IconButton(
+              icon: const Icon(Symbols.arrow_left_rounded),
+              onPressed: () => _switch(_currentIndex - 1),
+            ),
+          ),
+        if (_hasNext)
+          Positioned(
+            right: 8,
+            child: IconButton(
+              icon: const Icon(Symbols.arrow_right_rounded),
+              onPressed: () => _switch(_currentIndex + 1),
+            ),
+          ),
+      ],
+    ),
+  );
 }

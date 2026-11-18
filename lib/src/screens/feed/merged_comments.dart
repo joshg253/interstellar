@@ -2,7 +2,7 @@ import 'package:interstellar/src/models/image.dart';
 
 /// One logical comment: every account's copy of it, plus the merged replies.
 class MergedNode<T> {
-  MergedNode(this.copies, this.children);
+  new(this.copies, this.children);
 
   /// (account, copy) pairs; the first is the displayed one.
   final List<(String, T)> copies;

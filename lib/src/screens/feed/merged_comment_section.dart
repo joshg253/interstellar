@@ -16,7 +16,7 @@ import 'package:provider/provider.dart';
 
 /// One account's view of a post's comments.
 class CommentSource {
-  CommentSource({
+  new({
     required this.account,
     required this.api,
     required this.postType,
@@ -43,7 +43,7 @@ class CommentSource {
 /// tree. Each comment is shown once, through the account picked in the
 /// selector, so votes, replies and the other actions act as that account.
 class MergedCommentSection extends StatefulWidget {
-  const MergedCommentSection({
+  const new({
     required this.sources,
     required this.sort,
     required this.opUserId,
@@ -195,7 +195,7 @@ class _MergedCommentSectionState extends State<MergedCommentSection> {
 }
 
 class MergedCommentTile extends StatelessWidget {
-  const MergedCommentTile({
+  const new({
     required this.node,
     required this.apis,
     required this.onUpdate,
@@ -334,7 +334,7 @@ String? resolveActiveAccount(AppController ac, List<String> accounts) =>
 /// the post page; guests are listed but can't be chosen. [counts] optionally
 /// adds each account's comment count to its menu entry.
 class AccountMenuButton extends StatelessWidget {
-  const AccountMenuButton({
+  const new({
     required this.accounts,
     this.counts = const {},
     this.pending = const [],
@@ -429,7 +429,7 @@ Key crossPostGroupKey(MergedNode<PostModel> group, int copies) {
 /// header row (tap opens the post, the menu shows its card) over its comments,
 /// merged like the main post's.
 class CrossPostSection extends StatefulWidget {
-  const CrossPostSection({
+  const new({
     required this.group,
     required this.apis,
     required this.sort,

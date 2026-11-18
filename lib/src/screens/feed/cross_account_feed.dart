@@ -3,7 +3,7 @@
 typedef AccountPage<T> = ({List<T> items, String? next});
 
 class AccountFeedSource<T> {
-  AccountFeedSource({required this.account, required this.fetch});
+  new({required this.account, required this.fetch});
 
   final String account;
   final Future<AccountPage<T>> Function(String page) fetch;
@@ -18,7 +18,7 @@ class AccountFeedSource<T> {
 /// Merges newest-first streams from several accounts. Each source paginates
 /// independently and a failing source is dropped without affecting the others.
 class CrossAccountFeed<T> {
-  CrossAccountFeed({
+  new({
     required this.sources,
     DateTime Function(T)? createdAt,
     int Function(T, T)? compare,
@@ -34,7 +34,7 @@ class CrossAccountFeed<T> {
 
   /// Orders items: negative when the first sorts before the second. Each
   /// source is expected to deliver its items in this order. Defaults to
-  /// newest first by [createdAt].
+  /// newest first by `createdAt`.
   final int Function(T, T) _compare;
 
   /// Identity of the logical item (e.g. its ActivityPub id). Items sharing a

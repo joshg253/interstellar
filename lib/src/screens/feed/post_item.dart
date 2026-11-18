@@ -7,8 +7,8 @@ import 'package:interstellar/src/controller/server.dart';
 import 'package:interstellar/src/models/post.dart';
 import 'package:interstellar/src/utils/ap_urls.dart';
 import 'package:interstellar/src/utils/preview_images.dart';
-import 'package:interstellar/src/utils/video_url.dart';
 import 'package:interstellar/src/utils/utils.dart';
+import 'package:interstellar/src/utils/video_url.dart';
 import 'package:interstellar/src/widgets/account_scope.dart';
 import 'package:interstellar/src/widgets/ban_dialog.dart';
 import 'package:interstellar/src/widgets/content_item/content_item.dart';
@@ -17,7 +17,7 @@ import 'package:provider/provider.dart';
 import 'package:simplytranslate/simplytranslate.dart';
 
 class PostItem extends StatefulWidget {
-  const PostItem(
+  const new(
     this.item,
     this.onUpdate, {
     super.key,
@@ -109,12 +109,13 @@ class _PostItemState extends State<PostItem> {
           title: widget.item.title,
           // A list preview shows the body as plain text, so an image written
           // in it becomes the preview image instead of raw markdown.
-          image:
-              widget.item.image ??
-              (_bodyPreview ? firstMarkdownImage(widget.item.body) : null),
+          images: postPreviewImages(
+            widget.item.images,
+            widget.item.body,
+            bodyPreview: _bodyPreview,
+          ),
           link: widget.item.url != null ? Uri.parse(widget.item.url!) : null,
           embeddedVideo: embeddedVideoFile(widget.item.embedVideoUrl),
-          gallery: widget.item.gallery,
           body: _bodyPreview ? previewText(widget.item.body) : widget.item.body,
           translation: _translation,
           lang: widget.item.lang,

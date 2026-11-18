@@ -13,7 +13,7 @@ const _cellWidth = 52.0;
 /// account.
 @RoutePage()
 class GlobalSubscriptionsCompareScreen extends StatefulWidget {
-  const GlobalSubscriptionsCompareScreen({super.key});
+  const new({super.key});
 
   @override
   State<GlobalSubscriptionsCompareScreen> createState() =>
@@ -310,9 +310,8 @@ class _GlobalSubscriptionsCompareScreenState
                               dense: true,
                               leading: const Icon(Icons.error_outline),
                               title: Text(
-                                l(
-                                  context,
-                                ).globalSubs_failed(subs.failures.length),
+                                l(context)
+                                    .globalSubs_failed(subs.failures.length),
                               ),
                               children: [
                                 for (final f in subs.failures)

@@ -3,6 +3,7 @@ import 'package:interstellar/src/utils/preview_images.dart';
 
 void main() {
   previewTextTests();
+  previewImagesTests();
   const url = 'https://example.com/pictrs/image/a.webp';
 
   test('the first markdown image of a body is the preview image', () {
@@ -64,5 +65,21 @@ void previewTextTests() {
       expect(previewText(null), isNull);
       expect(previewText('![](https://x/a.png)'), isNull);
     });
+  });
+}
+
+void previewImagesTests() {
+  test('a post with no images and no markdown image has null images', () {
+    expect(postPreviewImages(null, 'text', bodyPreview: true), isNull);
+    expect(postPreviewImages(null, 'text', bodyPreview: false), isNull);
+  });
+
+  test('a markdown image in the body becomes the preview image', () {
+    final images = postPreviewImages(
+      null,
+      '![A cat](https://example.com/a.png)',
+      bodyPreview: true,
+    );
+    expect(images, hasLength(1));
   });
 }

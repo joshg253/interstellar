@@ -180,11 +180,7 @@ ScrollPhysics? appTabViewPhysics(BuildContext context) =>
     : null;
 
 class DefaultTabControllerListener extends StatefulWidget {
-  const DefaultTabControllerListener({
-    required this.child,
-    super.key,
-    this.onTabSelected,
-  });
+  const new({required this.child, super.key, this.onTabSelected});
 
   final void Function(int index)? onTabSelected;
   final Widget child;
@@ -330,7 +326,7 @@ class PlatformIs {
 }
 
 class UnreachableError extends Error {
-  UnreachableError();
+  new();
 
   @override
   String toString() => 'Unreachable Error, you should not be seeing this!';

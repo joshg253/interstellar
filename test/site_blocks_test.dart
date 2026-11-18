@@ -66,7 +66,7 @@ void piefedTests() {
   test('PieFed names a person user_name, not name', () {
     final site = {
       'my_user': {
-        'community_blocks': [],
+        'community_blocks': <Object?>[],
         'person_blocks': [
           {
             'person': {'user_name': 'me'},
@@ -95,10 +95,10 @@ void piefedTests() {
   test('a blocked person with no name at all is an error that says so', () {
     final site = {
       'my_user': {
-        'community_blocks': [],
+        'community_blocks': <Object?>[],
         'person_blocks': [
           {
-            'person': {},
+            'person': <String, Object?>{},
             'target': {'actor_id': 'https://other.example/u/x'},
           },
         ],

@@ -53,9 +53,8 @@ void main() {
     expect(q['code_challenge_method'], 'S256');
     expect(
       q['code_challenge'],
-      base64UrlEncode(
-        sha256.convert(ascii.encode(session.codeVerifier)).bytes,
-      ).replaceAll('=', ''),
+      base64UrlEncode(sha256.convert(ascii.encode(session.codeVerifier)).bytes)
+          .replaceAll('=', ''),
     );
     expect(q['state'], session.state);
     expect(session.state, isNotEmpty);

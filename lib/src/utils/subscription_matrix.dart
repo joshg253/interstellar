@@ -1,8 +1,7 @@
 /// Which accounts are subscribed to which communities, matched by
 /// case-insensitive `name@host`.
 class SubscriptionMatrix {
-  SubscriptionMatrix(Map<String, Set<String>> byAccount)
-    : accounts = byAccount.keys.toList() {
+  new(Map<String, Set<String>> byAccount) : accounts = byAccount.keys.toList() {
     for (final entry in byAccount.entries) {
       final set = <String>{};
       for (final name in entry.value) {

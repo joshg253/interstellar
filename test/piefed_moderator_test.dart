@@ -65,9 +65,8 @@ void main() {
           domain: 'example.com',
         );
 
-        final mods = await APICommunityModeration(
-          client,
-        ).updateModerator(7, 9, added);
+        final mods = await APICommunityModeration(client)
+            .updateModerator(7, 9, added);
 
         expect(requests.first.method, 'POST');
         expect(requests.first.url.path, endsWith('/community/mod'));

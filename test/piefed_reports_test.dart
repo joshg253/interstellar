@@ -125,9 +125,8 @@ void main() {
     'PieFed listReports asks for the community and parses the views',
     () async {
       final requests = <http.Request>[];
-      final list = await APICommunityModeration(
-        _client(requests),
-      ).listReports(7, status: ReportStatus.pending);
+      final list = await APICommunityModeration(_client(requests))
+          .listReports(7, status: ReportStatus.pending);
 
       final query = requests
           .firstWhere((r) => r.url.path.endsWith('/list'))
@@ -204,9 +203,8 @@ void main() {
   });
 
   test('a resolved report whose post was removed reads as approved', () async {
-    final list = await APICommunityModeration(
-      _client([], listRemoved: true),
-    ).listReports(7, status: ReportStatus.approved);
+    final list = await APICommunityModeration(_client([], listRemoved: true))
+        .listReports(7, status: ReportStatus.approved);
 
     expect(list.items.single.status, ReportStatus.approved);
   });

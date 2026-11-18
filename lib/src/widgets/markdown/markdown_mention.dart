@@ -11,7 +11,7 @@ import 'package:markdown/markdown.dart' as md;
 import 'package:provider/provider.dart';
 
 class MentionMarkdownSyntax extends md.InlineSyntax {
-  MentionMarkdownSyntax() : super(_mentionPattern);
+  new() : super(_mentionPattern);
 
   /*
     Should match the following patterns:
@@ -36,9 +36,12 @@ class MentionMarkdownSyntax extends md.InlineSyntax {
     /u/jwr1
     @jwr1@kbin.earth
     @jwr1
+
+    There cannot be an additional ! symbol, an additional @ symbol, or a word
+    character preceding the match.
   */
   static const String _mentionPattern =
-      r'(?:^|\s)(?:(?:(?:https?:\/\/)?([a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-zA-Z]{2,}))?\/([umc])\/@?|(@|!))([a-zA-Z0-9_]+)(?:@([a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-zA-Z]{2,}))?';
+      r'(?<![!@\w])(?:(?:(?:https?:\/\/)?([a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-zA-Z]{2,}))?\/([umc])\/@?|(@|!))([a-zA-Z0-9_]+)(?:@([a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-zA-Z]{2,}))?';
 
   /*
     Should match the following patterns:
@@ -50,8 +53,6 @@ class MentionMarkdownSyntax extends md.InlineSyntax {
       r'\[.*?\]\(\s*' + _mentionPattern + r'(?:\s*".*?")?\s*\)';
   static final _mdLinkPatternRegExp = RegExp(_mdLinkPattern, multiLine: true);
 
-  static final _borderRegExp = RegExp(r'[^a-z0-9@/\\]', caseSensitive: false);
-
   @override
   bool tryMatch(md.InlineParser parser, [int? startMatchPos]) {
     startMatchPos ??= parser.pos;
@@ -59,29 +60,9 @@ class MentionMarkdownSyntax extends md.InlineSyntax {
     final isMarkdownLink =
         String.fromCharCode(parser.charAt(parser.pos)) == '[';
 
-    // The pattern starts with the whitespace before the mention, so when the
-    // match starts on whitespace that is already the boundary. Only otherwise
-    // look at the character before it.
-    final startsOnWhitespace =
-        startMatchPos < parser.source.length &&
-        parser.source[startMatchPos].trim().isEmpty;
-    if (parser.pos > 0 && !isMarkdownLink && !startsOnWhitespace) {
-      final precededBy = String.fromCharCode(parser.charAt(parser.pos - 1));
-      if (_borderRegExp.matchAsPrefix(precededBy) == null) {
-        return false;
-      }
-    }
-
     final match = (isMarkdownLink ? _mdLinkPatternRegExp : pattern)
         .matchAsPrefix(parser.source, startMatchPos);
     if (match == null) return false;
-
-    if (parser.source.length > match.end && !isMarkdownLink) {
-      final followedBy = String.fromCharCode(parser.charAt(match.end));
-      if (_borderRegExp.matchAsPrefix(followedBy) == null) {
-        return false;
-      }
-    }
 
     // Write any existing plain text up to this point.
     parser.writeText();
@@ -113,7 +94,7 @@ class MentionMarkdownSyntax extends md.InlineSyntax {
 }
 
 class MentionMarkdownBuilder extends mdf.MarkdownElementBuilder {
-  MentionMarkdownBuilder({required this.originInstance});
+  new({required this.originInstance});
 
   final String originInstance;
 
@@ -133,7 +114,7 @@ class MentionMarkdownBuilder extends mdf.MarkdownElementBuilder {
 }
 
 class MentionWidget extends StatefulWidget {
-  const MentionWidget(this.name, this.originInstance, {super.key});
+  const new(this.name, this.originInstance, {super.key});
 
   final String name;
   final String originInstance;
@@ -142,8 +123,8 @@ class MentionWidget extends StatefulWidget {
   State<MentionWidget> createState() => MentionWidgetState();
 }
 
-Map<String, DetailedUserModel> userMentionCache = {};
-Map<String, DetailedCommunityModel> communityMentionCache = {};
+Map<String, DetailedUserModel?> userMentionCache = {};
+Map<String, DetailedCommunityModel?> communityMentionCache = {};
 
 class MentionWidgetState extends State<MentionWidget> {
   late String _displayName;
@@ -170,9 +151,9 @@ class MentionWidgetState extends State<MentionWidget> {
       _displayName = modifier + name;
     });
 
-    try {
-      if (modifier == '@') {
-        if (!userMentionCache.containsKey(cacheKey)) {
+    if (modifier == '@') {
+      if (!userMentionCache.containsKey(cacheKey)) {
+        try {
           userMentionCache[cacheKey] = await context
               .read<AppController>()
               .api
@@ -182,17 +163,25 @@ class MentionWidgetState extends State<MentionWidget> {
                     ? name
                     : '$name@$host',
               );
+        } catch (_) {
+          // User not found
+          userMentionCache[cacheKey] = null;
         }
-        final user = userMentionCache[cacheKey]!;
+      }
 
+      final user = userMentionCache[cacheKey];
+
+      if (user != null) {
         setState(() {
           _icon = user.avatar;
           _onClick = () => context.router.push(
             UserRoute(username: user.name, userId: user.id, initData: user),
           );
         });
-      } else if (modifier == '!') {
-        if (!communityMentionCache.containsKey(cacheKey)) {
+      }
+    } else if (modifier == '!') {
+      if (!communityMentionCache.containsKey(cacheKey)) {
+        try {
           communityMentionCache[cacheKey] = await context
               .read<AppController>()
               .api
@@ -202,9 +191,15 @@ class MentionWidgetState extends State<MentionWidget> {
                     ? name
                     : '$name@$host',
               );
+        } catch (_) {
+          // Community not found
+          communityMentionCache[cacheKey] = null;
         }
-        final community = communityMentionCache[cacheKey]!;
+      }
 
+      final community = communityMentionCache[cacheKey];
+
+      if (community != null) {
         setState(() {
           _icon = community.icon;
           _onClick = () => context.router.push(
@@ -216,8 +211,6 @@ class MentionWidgetState extends State<MentionWidget> {
           );
         });
       }
-    } catch (_) {
-      // User/Community not found
     }
   }
 

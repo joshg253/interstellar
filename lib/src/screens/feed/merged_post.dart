@@ -14,7 +14,7 @@ import 'package:provider/provider.dart';
 /// The other accounts' copies of one post, as shown on a post page inside an
 /// [AccountScope]: their latest state, and the accounts still to be resolved.
 class PostCopies extends ChangeNotifier {
-  PostCopies({this.copies = const [], this.candidates = const []})
+  new({this.copies = const [], this.candidates = const []})
     : _posts = {for (final c in copies) c.account: c.post};
 
   /// Copies handed in by the feed.
@@ -114,9 +114,8 @@ Widget mergedAccountMenu(
       onResolve: (account) async {
         final problem = await copies.resolveFor(account, post.apId);
         if (problem != null && context.mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('$account: $problem')));
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text('$account: $problem')));
         }
         return problem == null;
       },
@@ -127,7 +126,7 @@ Widget mergedAccountMenu(
 /// The post card of a scoped page. It follows the "Interact as" selector, using
 /// that account's own copy of the post.
 class MergedPostHeader extends StatelessWidget {
-  const MergedPostHeader({
+  const new({
     required this.copies,
     required this.post,
     required this.onUpdate,

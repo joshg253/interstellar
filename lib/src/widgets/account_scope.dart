@@ -8,7 +8,7 @@ import 'package:provider/provider.dart';
 /// Pins a subtree to one account's API instead of the globally selected one.
 /// Screens outside any scope behave exactly as before.
 class AccountScope extends InheritedWidget {
-  const AccountScope({
+  const new({
     required this.account,
     required this.api,
     required super.child,

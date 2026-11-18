@@ -6,7 +6,7 @@ part 'poll.freezed.dart';
 
 @freezed
 abstract class PollChoiceModel with _$PollChoiceModel {
-  const factory PollChoiceModel({
+  const factory({
     required int id,
     required String text,
     required int sortOrder,
@@ -17,7 +17,7 @@ abstract class PollChoiceModel with _$PollChoiceModel {
 
 @freezed
 abstract class PollModel with _$PollModel {
-  const factory PollModel({
+  const factory({
     required int postId,
     required DateTime endPoll,
     required bool multiple,
@@ -25,11 +25,11 @@ abstract class PollModel with _$PollModel {
     required List<PollChoiceModel> choices,
   }) = _PollModel;
 
-  const PollModel._();
+  const new _();
 
   /// A Mastodon poll. Its options have no ids, so a choice id is its index.
   /// A poll that never expires gets a far-off end.
-  factory PollModel.fromMastodon(int postId, JsonMap json) {
+  factory fromMastodon(int postId, JsonMap json) {
     final own = (json['own_votes'] as List<dynamic>? ?? []).cast<int>();
     final options = (json['options']! as List<dynamic>).cast<JsonMap>();
 
@@ -54,7 +54,7 @@ abstract class PollModel with _$PollModel {
     );
   }
 
-  factory PollModel.fromPiefed(int postId, JsonMap json) {
+  factory fromPiefed(int postId, JsonMap json) {
     final choices = json['choices']! as List<dynamic>;
     final votes = json['my_votes'] as List<dynamic>? ?? [];
 

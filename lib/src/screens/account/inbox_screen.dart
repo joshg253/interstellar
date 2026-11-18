@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:auto_route/annotations.dart';
 import 'package:flutter/material.dart';
 import 'package:interstellar/src/controller/controller.dart';
-import 'package:interstellar/src/controller/server.dart';
 import 'package:interstellar/src/screens/account/messages/messages_screen.dart';
 import 'package:interstellar/src/screens/account/notification/notification_badge.dart';
 import 'package:interstellar/src/screens/account/notification/notification_screen.dart';
@@ -15,7 +14,7 @@ import 'package:provider/provider.dart';
 
 @RoutePage()
 class InboxScreen extends StatefulWidget {
-  const InboxScreen({super.key, this.placeholder = false});
+  const new({super.key, this.placeholder = false});
 
   // This is so the generated route includes parameters so that a key can be passed.
   final bool placeholder;

@@ -68,9 +68,8 @@ void main() {
       domain: 'example.com',
     );
 
-    await APIThreads(
-      client,
-    ).edit(4, 'T', false, 'b', 'en', false, tags: ['a', 'b']);
+    await APIThreads(client)
+        .edit(4, 'T', false, 'b', 'en', false, tags: ['a', 'b']);
 
     expect(jsonDecode(sent!.body), containsPair('tags', ['a', 'b']));
   });

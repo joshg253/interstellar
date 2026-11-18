@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:interstellar/src/utils/globals.dart';
 
 class _ThrowsInBuild extends StatelessWidget {
-  const _ThrowsInBuild();
+  const new();
 
   @override
   Widget build(BuildContext context) {

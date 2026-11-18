@@ -86,7 +86,7 @@ Future<Uri?> _mastodonVideo(String host, String id, http.Client client) async {
       Uri.https(host, '/api/v1/statuses/$id'),
       client,
     );
-    final attachments = (json as Map)['media_attachments'];
+    final attachments = (json! as Map)['media_attachments'];
     if (attachments is! List) return null;
     for (final attachment in attachments) {
       if (attachment is! Map) continue;
@@ -105,7 +105,7 @@ Future<Uri?> _mastodonVideo(String host, String id, http.Client client) async {
 Future<Uri?> _peertubeVideo(String host, String id, http.Client client) async {
   try {
     final json = await _getJson(Uri.https(host, '/api/v1/videos/$id'), client);
-    final video = json as Map;
+    final video = json! as Map;
     // A plain file plays everywhere; otherwise the adaptive stream.
     final files = video['files'];
     if (files is List) {

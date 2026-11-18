@@ -2,8 +2,8 @@ import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:interstellar/src/api/feed_source.dart';
-import 'package:interstellar/src/api/resolve.dart';
 import 'package:interstellar/src/api/notifications.dart';
+import 'package:interstellar/src/api/resolve.dart';
 import 'package:interstellar/src/controller/controller.dart';
 import 'package:interstellar/src/controller/router.gr.dart';
 import 'package:interstellar/src/controller/server.dart';
@@ -25,7 +25,7 @@ import 'package:provider/provider.dart';
 
 @RoutePage()
 class CommunityScreen extends StatefulWidget {
-  const CommunityScreen({
+  const new({
     @PathParam('communityName') required this.communityName,
     this.communityId,
     super.key,
@@ -283,9 +283,9 @@ class _CommunityScreenState extends State<CommunityScreen> {
                                   children: [
                                     Text(
                                       _data!.title,
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.titleLarge,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleLarge,
                                     ),
                                     if (_data!.isPostingRestrictedToMods)
                                       const PostingRestrictedIndicator(),
@@ -344,7 +344,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
 }
 
 class PostingRestrictedIndicator extends StatelessWidget {
-  const PostingRestrictedIndicator({super.key});
+  const new({super.key});
 
   @override
   Widget build(BuildContext context) {

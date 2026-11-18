@@ -205,6 +205,12 @@ ImageModel? _image(List<JsonMap> media) {
   return null;
 }
 
+/// The post's first image as the images list, or null (never empty).
+List<ImageModel>? _images(List<JsonMap> media) {
+  final image = _image(media);
+  return image == null ? null : [image];
+}
+
 /// Video and gifv attachments (a gifv is a looping mp4) as markdown the body's
 /// video player renders.
 String _videos(List<JsonMap> media) => [
@@ -298,7 +304,7 @@ PostModel mastodonPost(JsonMap json, String domain) {
     domain: null,
     title: null,
     url: null,
-    image: _image(((s['media_attachments'] as List?) ?? []).cast<JsonMap>()),
+    images: _images(((s['media_attachments'] as List?) ?? []).cast<JsonMap>()),
     body: cardLink == null ? _body(s) : '${_body(s)}\n\n$cardLink',
     lang: s['language'] as String?,
     numComments: (s['replies_count'] as int?) ?? 0,
@@ -430,7 +436,7 @@ Set<String> mastodonAccountNames(
 };
 
 class MastodonAPI {
-  MastodonAPI(this.client);
+  new(this.client);
 
   final ServerClient client;
 
@@ -483,9 +489,9 @@ class MastodonAPI {
   /// post twice; keep the first.
   List<PostModel> _posts(List<JsonMap> statuses) {
     final seen = <int>{};
-    return [
-      for (final s in statuses) mastodonPost(s, client.domain),
-    ].where((post) => seen.add(post.id)).toList();
+    return [for (final s in statuses) mastodonPost(s, client.domain)]
+        .where((post) => seen.add(post.id))
+        .toList();
   }
 
   /// The server said guests may not read this timeline (401, 403, 422).
@@ -505,9 +511,8 @@ class MastodonAPI {
         queryParams: {'limit': '80', 'max_id': maxId},
       );
       out.addAll(_list(response.body));
-      final next = RegExp(
-        r'<([^>]*)>\s*;\s*rel="next"',
-      ).firstMatch(response.headers['link'] ?? '')?[1];
+      final next = RegExp(r'<([^>]*)>\s*;\s*rel="next"')
+          .firstMatch(response.headers['link'] ?? '')?[1];
       maxId = next == null ? null : Uri.parse(next).queryParameters['max_id'];
     } while (maxId != null && ++pages < maxPages);
     return out;
@@ -581,9 +586,8 @@ class MastodonAPI {
       '/bookmarks',
       queryParams: {'limit': '20', 'max_id': page},
     );
-    final next = RegExp(
-      r'<([^>]*)>\s*;\s*rel="next"',
-    ).firstMatch(response.headers['link'] ?? '')?[1];
+    final next = RegExp(r'<([^>]*)>\s*;\s*rel="next"')
+        .firstMatch(response.headers['link'] ?? '')?[1];
     return (
       [for (final s in _list(response.body)) mastodonPost(s, client.domain)],
       next == null ? null : Uri.parse(next).queryParameters['max_id'],

@@ -4,7 +4,6 @@ import 'package:expandable/expandable.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
-import 'package:interstellar/src/widgets/markdown/markdown.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:infinite_scroll_pagination/infinite_scroll_pagination.dart';
 import 'package:interstellar/src/api/feed_source.dart';
@@ -27,6 +26,7 @@ import 'package:interstellar/src/widgets/avatar.dart';
 import 'package:interstellar/src/widgets/error_page.dart';
 import 'package:interstellar/src/widgets/floating_menu.dart';
 import 'package:interstellar/src/widgets/hide_on_scroll.dart';
+import 'package:interstellar/src/widgets/markdown/markdown.dart';
 import 'package:interstellar/src/widgets/menus/feed_menu.dart';
 import 'package:interstellar/src/widgets/paging.dart';
 import 'package:interstellar/src/widgets/scaffold.dart';
@@ -39,7 +39,7 @@ import 'package:provider/provider.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 class FeedDetails extends StatefulWidget {
-  const FeedDetails({required this.feed, super.key, this.onUpdate});
+  const new({required this.feed, super.key, this.onUpdate});
 
   final FeedModel feed;
   final void Function(FeedModel)? onUpdate;
@@ -178,13 +178,12 @@ class _FeedDetails extends State<FeedDetails> {
 
 @RoutePage()
 class HomeScreen extends FeedScreen {
-  const HomeScreen({super.key, super.scrollController})
-    : super(feedName: 'home');
+  const new({super.key, super.scrollController}) : super(feedName: 'home');
 }
 
 @RoutePage()
 class FeedScreen extends StatefulWidget {
-  const FeedScreen({
+  const new({
     @PathParam('feedName') required this.feedName,
     super.key,
     this.feed,
@@ -431,9 +430,8 @@ class _FeedScreenState extends State<FeedScreen> {
                 ac.profile.feedActionSetFilter.name,
               ),
         () async {
-          final newFilter = await feedFilterSelect(
-            context,
-          ).askSelection(context, _filter);
+          final newFilter = await feedFilterSelect(context)
+              .askSelection(context, _filter);
 
           if (newFilter != null && newFilter != _filter) {
             setState(() {
@@ -449,9 +447,8 @@ class _FeedScreenState extends State<FeedScreen> {
           ac.profile.feedActionSetSort.name,
         ),
         () async {
-          final newSort = await feedSortSelect(
-            context,
-          ).askSelection(context, _sort);
+          final newSort = await feedSortSelect(context)
+              .askSelection(context, _sort);
 
           if (newSort != null && newSort != _sort) {
             setState(() {
@@ -470,9 +467,8 @@ class _FeedScreenState extends State<FeedScreen> {
                 ac.profile.feedActionSetView.name,
               ),
         () async {
-          final newMode = await feedViewSelect(
-            context,
-          ).askSelection(context, _view);
+          final newMode = await feedViewSelect(context)
+              .askSelection(context, _view);
 
           if (newMode != null && newMode != _view) {
             setState(() {
@@ -486,20 +482,16 @@ class _FeedScreenState extends State<FeedScreen> {
           key.currentState?.refresh();
         }
       }),
-      feedActionBackToTop(context).withProps(
-        ac.profile.feedActionBackToTop,
-        () {
-          for (final key in _feedKeyList) {
-            key.currentState?.backToTop();
-          }
-        },
-      ),
-      feedActionExpandFab(context).withProps(
-        ac.profile.feedActionExpandFab,
-        () {
-          _fabKey.currentState?.toggle();
-        },
-      ),
+      feedActionBackToTop(context)
+          .withProps(ac.profile.feedActionBackToTop, () {
+            for (final key in _feedKeyList) {
+              key.currentState?.backToTop();
+            }
+          }),
+      feedActionExpandFab(context)
+          .withProps(ac.profile.feedActionExpandFab, () {
+            _fabKey.currentState?.toggle();
+          }),
       if (_hideReadPosts)
         feedActionShowReadPosts(context).withProps(
           ac.profile.feedActionHideReadPosts,
@@ -592,9 +584,8 @@ class _FeedScreenState extends State<FeedScreen> {
                   : feedViewSelect(context).getOption(_view).value;
               final currentFeedSortOption =
                   tabsAction?.name == feedActionSetSort(context).name
-                  ? ac.profile.feedSortOrder[DefaultTabController.of(
-                      context,
-                    ).index]
+                  ? ac.profile.feedSortOrder[DefaultTabController.of(context)
+                        .index]
                   : feedSortSelect(context).getOption(sort).value;
               return [
                 SliverAppBar(
@@ -805,7 +796,7 @@ SelectionMenu<FeedSource> feedFilterSelect(BuildContext context) =>
     );
 
 class FeedScreenBody extends StatefulWidget {
-  const FeedScreenBody({
+  const new({
     required this.feed,
     required this.sort,
     required this.view,

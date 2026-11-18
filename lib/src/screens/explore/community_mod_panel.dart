@@ -21,7 +21,7 @@ import 'package:provider/provider.dart';
 
 @RoutePage()
 class CommunityModPanelScreen extends StatefulWidget {
-  const CommunityModPanelScreen({
+  const new({
     @PathParam('communityId') required this.communityId,
     required this.initData,
     required this.onUpdate,
@@ -85,11 +85,7 @@ class _CommunityModPanelScreenState extends State<CommunityModPanelScreen> {
 }
 
 class CommunityModPanelBans extends StatefulWidget {
-  const CommunityModPanelBans({
-    required this.data,
-    required this.onUpdate,
-    super.key,
-  });
+  const new({required this.data, required this.onUpdate, super.key});
   final DetailedCommunityModel data;
   final void Function(DetailedCommunityModel) onUpdate;
 
@@ -147,11 +143,7 @@ class _CommunityModPanelBansState extends State<CommunityModPanelBans> {
 }
 
 class CommunityModPanelReports extends StatefulWidget {
-  const CommunityModPanelReports({
-    required this.data,
-    required this.onUpdate,
-    super.key,
-  });
+  const new({required this.data, required this.onUpdate, super.key});
   final DetailedCommunityModel data;
   final void Function(DetailedCommunityModel) onUpdate;
 
@@ -204,9 +196,8 @@ class _MagazineModPanelReportsState extends State<CommunityModPanelReports> {
                     ],
                   ),
                   onPressed: () async {
-                    final result = await reportStatusSelect(
-                      context,
-                    ).askSelection(context, _status);
+                    final result = await reportStatusSelect(context)
+                        .askSelection(context, _status);
                     if (result != null) {
                       setState(() {
                         _status = result;
@@ -244,7 +235,7 @@ class _MagazineModPanelReportsState extends State<CommunityModPanelReports> {
 }
 
 class CommunityModReport extends StatefulWidget {
-  const CommunityModReport({
+  const new({
     required this.communityId,
     required this.report,
     required this.updateItem,

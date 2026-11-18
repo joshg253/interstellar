@@ -60,17 +60,16 @@ enum PostMode {
 enum PostComponent { title, image, info, body, link, flairs }
 
 class ContentItem extends StatefulWidget {
-  const ContentItem({
+  const new({
     required this.originInstance,
     required this.id,
     required this.contentTypeName,
     required this.editDraftResourceId,
     required this.replyDraftResourceId,
     this.title,
-    this.image,
+    this.images,
     this.link,
     this.embeddedVideo,
-    this.gallery = const [],
     this.body,
     this.translation,
     this.lang,
@@ -80,6 +79,7 @@ class ContentItem extends StatefulWidget {
     this.poll,
     this.event,
     this.isPreview = false,
+    this.isEmbedded = false,
     this.fullImageSize = false,
     this.showCommunityFirst = false,
     this.read = false,
@@ -137,14 +137,12 @@ class ContentItem extends StatefulWidget {
 
   final int id;
   final String? title;
-  final ImageModel? image;
+  final List<ImageModel>? images;
   final Uri? link;
 
   /// A video the server found behind [link] (Lemmy and PieFed).
   final Uri? embeddedVideo;
 
-  /// The pictures of a gallery post; a list shows the first with a count.
-  final List<String> gallery;
   final String? body;
   final Translation? translation;
   final String? lang;
@@ -155,6 +153,7 @@ class ContentItem extends StatefulWidget {
   final EventModel? event;
 
   final bool isPreview;
+  final bool isEmbedded;
   final bool fullImageSize;
   final bool showCommunityFirst;
   final bool read;
@@ -430,7 +429,7 @@ class _ContentItemState extends State<ContentItem> {
             final isThumbnail =
                 !isVideo &&
                 ((constraints.maxWidth > 800 && !widget.fullImageSize) ||
-                    (widget.image?.blurHashWidth ?? 500) <= 800 &&
+                    (widget.images?.firstOrNull?.blurHashWidth ?? 500) <= 800 &&
                         widget.link != null);
             final image = getImage(
               context,
@@ -491,15 +490,7 @@ class _ContentItemState extends State<ContentItem> {
               components.add(switch (component) {
                 PostComponent.title => contentTitle(context, menuWidget),
                 PostComponent.image =>
-                  video ??
-                      (widget.gallery.length > 1 && !widget.isPreview
-                          ? _galleryPictures(context)
-                          : null) ??
-                      (image == null || isThumbnail
-                          ? null
-                          : widget.gallery.length > 1
-                          ? _withCount(image, widget.gallery.length)
-                          : image),
+                  video ?? (image == null || isThumbnail ? null : image),
                 PostComponent.info => ContentInfo(
                   user: widget.user,
                   isOp: widget.opUserId == widget.user?.id,
@@ -513,7 +504,9 @@ class _ContentItemState extends State<ContentItem> {
                   createdAt: widget.createdAt,
                   editedAt: widget.editedAt,
                   userTags: _userTags,
-                  menuWidget: widget.title == null ? menuWidget : null,
+                  menuWidget: widget.title == null && !widget.isEmbedded
+                      ? menuWidget
+                      : null,
                 ),
                 PostComponent.body =>
                   (widget.body != null &&
@@ -558,10 +551,9 @@ class _ContentItemState extends State<ContentItem> {
                       index == (components.nonNulls.length - 1)
                       ? component
                       : Padding(
-                              padding: const EdgeInsets.only(bottom: 10),
-                              child: component,
-                            )
-                            as Widget?,
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: component,
+                        ) as Widget?,
                 )
                 .toList();
 
@@ -686,7 +678,7 @@ class _ContentItemState extends State<ContentItem> {
                             .toList(),
                       ),
                     ),
-                  if (!ac.profile.hideActionButtons)
+                  if (!widget.isEmbedded && !ac.profile.hideActionButtons)
                     ActionButtons(
                       upVotes: widget.upVotes,
                       downVotes: widget.downVotes,
@@ -805,54 +797,13 @@ class _ContentItemState extends State<ContentItem> {
         : Markdown(widget.body!, widget.originInstance, nsfw: isNSFW);
   }
 
-  Widget _galleryPictures(BuildContext context) {
-    final enableBlur =
-        widget.isNSFW &&
-        context.watch<AppController>().profile.coverMediaMarkedSensitive;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      spacing: 8,
-      children: [
-        for (final src in widget.gallery)
-          AdvancedImage(
-            ImageModel(
-              src: src,
-              altText: null,
-              blurHash: null,
-              blurHashWidth: null,
-              blurHashHeight: null,
-            ),
-            openTitle: widget.title ?? '',
-            fit: BoxFit.fitWidth,
-            enableBlur: enableBlur,
-            hero: AdvancedImage.getHeroTag(),
-          ),
-      ],
-    );
-  }
-
-  Widget _withCount(Widget image, int count) => Stack(
-    alignment: Alignment.bottomRight,
-    children: [
-      image,
-      Padding(
-        padding: const EdgeInsets.all(8),
-        child: Chip(
-          avatar: const Icon(Symbols.photo_library_rounded, size: 16),
-          label: Text('$count'),
-          visualDensity: VisualDensity.compact,
-        ),
-      ),
-    ],
-  );
-
   Widget? getImage(
     BuildContext context, {
     double width = 800,
     bool isThumbnail = false,
     bool compact = false,
   }) {
-    if (widget.image == null) return null;
+    if (widget.images == null || widget.images!.isEmpty) return null;
     final fullImage = !isThumbnail && widget.fullImageSize;
     final imageSize =
         (compact
@@ -867,13 +818,24 @@ class _ContentItemState extends State<ContentItem> {
         widget.isNSFW &&
         context.watch<AppController>().profile.coverMediaMarkedSensitive;
 
-    final image = AdvancedImage(
-      widget.image!,
-      openTitle: imageOpenTitle,
-      fit: fullImage || isThumbnail ? BoxFit.contain : BoxFit.fitWidth,
-      enableBlur: enableBlur,
-      hero: AdvancedImage.getHeroTag(),
-    );
+    Widget image;
+    if (widget.images!.length > 1 && !isThumbnail) {
+      image = ImageGallery(
+        widget.images!,
+        openTitle: imageOpenTitle,
+        fit: fullImage || isThumbnail ? BoxFit.contain : BoxFit.fitWidth,
+        enableBlur: enableBlur,
+        hero: AdvancedImage.getHeroTag(),
+      );
+    } else {
+      image = AdvancedImage(
+        widget.images!.first,
+        openTitle: imageOpenTitle,
+        fit: fullImage || isThumbnail ? BoxFit.contain : BoxFit.fitWidth,
+        enableBlur: enableBlur,
+        hero: AdvancedImage.getHeroTag(),
+      );
+    }
 
     if (fullImage) {
       return image;
@@ -1131,9 +1093,8 @@ class _ContentItemState extends State<ContentItem> {
                         Padding(
                           padding: const EdgeInsets.only(left: 8),
                           child: Tooltip(
-                            message: l(
-                              context,
-                            ).commentsX(widget.numComments ?? 0),
+                            message: l(context)
+                                .commentsX(widget.numComments ?? 0),
                             triggerMode: TooltipTriggerMode.tap,
                             child: Row(
                               children: [

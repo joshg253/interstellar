@@ -517,6 +517,8 @@ class AppController with ChangeNotifier {
         final app = await auth.registerApp();
         final authorization = auth.authorization(app);
 
+        // The browser round trip is user-driven; the context is only used to show it.
+        // ignore: use_build_context_synchronously
         final res = await _authorizeInBrowser(authorization.url, context);
         if (res == null) return;
 
@@ -617,6 +619,8 @@ class AppController with ChangeNotifier {
           scopes: oauthScopes,
         );
 
+        // The browser round trip is user-driven; the context is only used to show it.
+        // ignore: use_build_context_synchronously
         final res = await _authorizeInBrowser(authorizationUrl, context);
         if (res == null) {
           return;

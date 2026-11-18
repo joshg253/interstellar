@@ -19,7 +19,7 @@ enum HostFailure {
 
 /// What went wrong with one server, and how long it has been going on.
 class HostProblem {
-  const HostProblem({
+  const new({
     required this.kind,
     required this.detail,
     required this.since,
@@ -27,7 +27,7 @@ class HostProblem {
     required this.checks,
   });
 
-  factory HostProblem.fromJson(Map<String, dynamic> json) => HostProblem(
+  factory fromJson(Map<String, dynamic> json) => HostProblem(
     kind: HostFailure.values.byName(json['kind'] as String),
     detail: json['detail'] as String,
     since: DateTime.parse(json['since'] as String),

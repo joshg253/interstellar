@@ -10,12 +10,12 @@ import 'package:interstellar/src/models/user.dart';
 import 'package:interstellar/src/screens/explore/explore_screen_item.dart';
 import 'package:interstellar/src/utils/debouncer.dart';
 import 'package:interstellar/src/utils/utils.dart';
+import 'package:interstellar/src/widgets/account_switcher.dart';
 import 'package:interstellar/src/widgets/hide_on_scroll.dart';
 import 'package:interstellar/src/widgets/paging.dart';
 import 'package:interstellar/src/widgets/selection_menu.dart';
 import 'package:interstellar/src/widgets/wrapper.dart';
 import 'package:material_symbols_icons/symbols.dart';
-import 'package:interstellar/src/widgets/account_switcher.dart';
 import 'package:provider/provider.dart';
 
 /// The Explore tab's search and settings, kept while the app runs.
@@ -25,13 +25,13 @@ _tabMemory;
 @RoutePage()
 class ExploreTab extends ExploreScreen {
   // The tab shows which account it is exploring as, with a way to change it.
-  const ExploreTab({super.key, super.focusNode})
+  const new({super.key, super.focusNode})
     : super(accountsAction: const AccountSwitcher());
 }
 
 @RoutePage()
 class ExploreScreen extends StatefulWidget {
-  const ExploreScreen({
+  const new({
     this.mode,
     this.id,
     this.subOnly = false,
@@ -221,9 +221,8 @@ class _ExploreScreenState extends State<ExploreScreen> {
       context,
       type,
     ).getOption(filter);
-    final currentFeedFilter = feedFilterSelection(
-      context,
-    ).getOption(feedFilter);
+    final currentFeedFilter = feedFilterSelection(context)
+        .getOption(feedFilter);
 
     final ac = context.watch<AppController>();
 
