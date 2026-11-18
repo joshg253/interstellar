@@ -81,7 +81,7 @@ enum APIExploreSort {
 }
 
 class APICommunity {
-  APICommunity(this.client);
+  new(this.client);
 
   final ServerClient client;
 

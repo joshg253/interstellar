@@ -12,14 +12,14 @@ import 'package:interstellar/src/api/client.dart';
 const mastodonScopes = 'read write follow';
 
 class MastodonApp {
-  const MastodonApp({required this.clientId, required this.clientSecret});
+  const new({required this.clientId, required this.clientSecret});
 
   final String clientId;
   final String clientSecret;
 }
 
 class MastodonAuthorization {
-  const MastodonAuthorization(this.url, this.codeVerifier, this.state);
+  const new(this.url, this.codeVerifier, this.state);
 
   final Uri url;
   final String codeVerifier;
@@ -29,7 +29,7 @@ class MastodonAuthorization {
 }
 
 class MastodonAuth {
-  MastodonAuth(this.httpClient, this.domain, this.redirectUri);
+  new(this.httpClient, this.domain, this.redirectUri);
 
   final http.Client httpClient;
   final String domain;
@@ -60,9 +60,8 @@ class MastodonAuth {
   /// those that support it.
   MastodonAuthorization authorization(MastodonApp app) {
     final random = Random.secure();
-    final state = base64UrlEncode(
-      List.generate(16, (_) => random.nextInt(256)),
-    ).replaceAll('=', '');
+    final state = base64UrlEncode(List.generate(16, (_) => random.nextInt(256)))
+        .replaceAll('=', '');
     final verifier = base64UrlEncode(
       List.generate(32, (_) => random.nextInt(256)),
     ).replaceAll('=', '');

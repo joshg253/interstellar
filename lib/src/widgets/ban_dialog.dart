@@ -24,7 +24,7 @@ Future<void> openBanDialog(
 }
 
 class BanDialog extends StatefulWidget {
-  const BanDialog({
+  const new({
     required this.user,
     required this.community,
     required this.api,

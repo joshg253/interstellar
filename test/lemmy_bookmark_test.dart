@@ -7,7 +7,7 @@ import 'package:interstellar/src/api/bookmark.dart';
 import 'package:interstellar/src/api/client.dart';
 import 'package:interstellar/src/controller/server.dart';
 
-final _comment = {
+final Map<String, Object> _comment = {
   'comment': {
     'id': 1,
     'path': '0.1',

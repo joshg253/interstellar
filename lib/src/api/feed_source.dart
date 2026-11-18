@@ -12,7 +12,7 @@ enum FeedView {
     icon: Symbols.view_timeline_rounded,
   );
 
-  const FeedView({
+  new({
     this.software =
         ServerSoftware.mbinFlag |
         ServerSoftware.piefedFlag |
@@ -54,7 +54,7 @@ enum FeedSource {
   topic,
   tag;
 
-  const FeedSource({this.icon});
+  new({this.icon});
 
   final IconData? icon;
 
@@ -167,7 +167,7 @@ enum FeedSort {
     icon: Symbols.chat_rounded,
   );
 
-  const FeedSort({
+  new({
     this.software =
         ServerSoftware.mbinFlag |
         ServerSoftware.piefedFlag |

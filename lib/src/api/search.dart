@@ -48,7 +48,7 @@ bool sameObject(Uri link, String apId) {
 }
 
 class APISearch {
-  APISearch(this.client);
+  new(this.client);
 
   final ServerClient client;
 

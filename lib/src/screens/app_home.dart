@@ -19,10 +19,7 @@ import 'package:provider/provider.dart';
 
 @RoutePage()
 class AppInstanceScreen extends StatelessWidget {
-  const AppInstanceScreen({
-    @PathParam('instance') required this.instance,
-    super.key,
-  });
+  const new({@PathParam('instance') required this.instance, super.key});
 
   final String instance;
 
@@ -34,7 +31,7 @@ class AppInstanceScreen extends StatelessWidget {
 
 @RoutePage()
 class AppHome extends StatefulWidget {
-  const AppHome({super.key});
+  const new({super.key});
 
   @override
   State<AppHome> createState() => _AppHomeState();
@@ -42,7 +39,7 @@ class AppHome extends StatefulWidget {
 
 class _AppHomeState extends State<AppHome> {
   int _navIndex = 0;
-  Key _feedKey = UniqueKey();
+  final Key _feedKey = UniqueKey();
   final Key _exploreKey = UniqueKey();
   Key _accountKey = UniqueKey();
   Key _inboxKey = UniqueKey();

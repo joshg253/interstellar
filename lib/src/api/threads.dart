@@ -51,7 +51,7 @@ List<String> mbinExplicitTags(List<String> tags, String? body) {
 }
 
 class APIThreads {
-  APIThreads(this.client);
+  new(this.client);
 
   final ServerClient client;
 
@@ -152,7 +152,7 @@ class APIThreads {
               FeedSource.subscribed => {'type_': 'Subscribed'},
               FeedSource.moderated => {'type_': 'ModeratorView'},
               FeedSource.favorited => {'liked_only': 'true'},
-              FeedSource.community => {'community_id': sourceId!.toString()},
+              FeedSource.community => {'community_id': sourceId},
               FeedSource.user => throw UnreachableError(),
               FeedSource.domain => throw Exception(
                 'Domain source not allowed for lemmy',
@@ -184,7 +184,7 @@ class APIThreads {
             FeedSource.subscribed => {'type_': 'Subscribed'},
             FeedSource.moderated => {'type_': 'ModeratorView'},
             FeedSource.favorited => {'liked_only': 'true'},
-            FeedSource.community => {'community_id': sourceId!.toString()},
+            FeedSource.community => {'community_id': sourceId},
             FeedSource.user => {'person_id': sourceId.toString()},
             FeedSource.domain => throw Exception(
               'Domain source not allowed for fromPiefed',

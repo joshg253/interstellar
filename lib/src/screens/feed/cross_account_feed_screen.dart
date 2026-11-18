@@ -1,10 +1,9 @@
-import 'package:expandable/expandable.dart';
-import 'package:flutter/foundation.dart' show setEquals;
 import 'dart:math' show min;
 
+import 'package:expandable/expandable.dart';
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
-import 'package:visibility_detector/visibility_detector.dart';
 import 'package:interstellar/src/api/api.dart';
 import 'package:interstellar/src/api/feed_source.dart';
 import 'package:interstellar/src/controller/controller.dart';
@@ -12,36 +11,37 @@ import 'package:interstellar/src/controller/server.dart';
 import 'package:interstellar/src/models/post.dart';
 import 'package:interstellar/src/screens/feed/create_screen.dart';
 import 'package:interstellar/src/screens/feed/cross_account_feed.dart';
+import 'package:interstellar/src/screens/feed/feed_accounts.dart';
 import 'package:interstellar/src/screens/feed/feed_agregator.dart';
 import 'package:interstellar/src/screens/feed/feed_screen.dart'
     show feedSortSelect;
+import 'package:interstellar/src/screens/feed/global_subscriptions.dart';
+import 'package:interstellar/src/screens/feed/merged_comment_section.dart';
+import 'package:interstellar/src/screens/feed/merged_comments.dart';
+import 'package:interstellar/src/screens/feed/post_filter_lists.dart';
+import 'package:interstellar/src/screens/feed/post_item.dart';
+import 'package:interstellar/src/screens/feed/post_page.dart';
+import 'package:interstellar/src/utils/breakpoints.dart';
+import 'package:interstellar/src/utils/debouncer.dart';
 import 'package:interstellar/src/utils/utils.dart' show l, parseEnum;
+import 'package:interstellar/src/widgets/account_avatar.dart';
+import 'package:interstellar/src/widgets/account_scope.dart';
+import 'package:interstellar/src/widgets/account_switcher.dart';
 import 'package:interstellar/src/widgets/actions.dart';
 import 'package:interstellar/src/widgets/floating_menu.dart';
 import 'package:interstellar/src/widgets/hide_on_scroll.dart';
-import 'package:interstellar/src/widgets/wrapper.dart';
-import 'package:interstellar/src/screens/feed/merged_comment_section.dart';
-import 'package:interstellar/src/screens/feed/merged_comments.dart';
-import 'package:interstellar/src/screens/feed/post_item.dart';
-import 'package:interstellar/src/screens/feed/post_page.dart';
-import 'package:interstellar/src/widgets/account_avatar.dart';
-import 'package:interstellar/src/widgets/account_switcher.dart';
-import 'package:interstellar/src/widgets/account_scope.dart';
-import 'package:interstellar/src/screens/feed/global_subscriptions.dart';
-import 'package:interstellar/src/screens/feed/feed_accounts.dart';
-import 'package:interstellar/src/screens/feed/post_filter_lists.dart';
-import 'package:interstellar/src/utils/breakpoints.dart';
-import 'package:interstellar/src/utils/debouncer.dart';
 import 'package:interstellar/src/widgets/scaffold.dart';
+import 'package:interstellar/src/widgets/wrapper.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:provider/provider.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 /// Experimental: newest posts from every account in one stream, rendered with
 /// the regular post card (so the usual feed settings apply). Each post is
 /// shown through the "interact as" account (the selected one unless chosen on
 /// a post). The corner button is the account switcher: it picks one account.
 class CombinedFeedScreen extends StatefulWidget {
-  const CombinedFeedScreen({
+  const new({
     required this.accounts,
     super.key,
     this.scrollController,
@@ -422,10 +422,10 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
   Future<PostListModel> _list(
     API api,
     FeedSource source, {
-    String? sourceId,
-    String? page,
     required FeedView view,
     required FeedSort sort,
+    String? sourceId,
+    String? page,
   }) {
     final software = api.client.software;
     if (view == FeedView.microblog) {
@@ -700,8 +700,7 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
     final skipped = [
       for (final account in skippedAccounts)
         // guests have no name, only the server
-        '${isAccountSignedIn(ac, account) ? account : '${account.split('@').last} (guest)'}'
-            ' has no ${_filter.title(context)} feed',
+        '${isAccountSignedIn(ac, account) ? account : '${account.split('@').last} (guest)'} has no ${_filter.title(context)} feed',
     ];
     // closed by the user; another source or set of skipped accounts shows it
     // again
@@ -751,13 +750,11 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
         () => _fabKey.currentState?.toggle(),
       ),
       if (hideRead)
-        feedActionShowReadPosts(
-          context,
-        ).withProps(ac.profile.feedActionHideReadPosts, _toggleHideRead)
+        feedActionShowReadPosts(context)
+            .withProps(ac.profile.feedActionHideReadPosts, _toggleHideRead)
       else
-        feedActionHideReadPosts(
-          context,
-        ).withProps(ac.profile.feedActionHideReadPosts, _toggleHideRead),
+        feedActionHideReadPosts(context)
+            .withProps(ac.profile.feedActionHideReadPosts, _toggleHideRead),
     ];
 
     return AdvancedScaffold(
@@ -952,12 +949,15 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
                   // media from the best copy, your vote state only when it
                   // is the acting account's own.
                   var display = _overrides[key] ?? shownPost;
-                  display = display.copyWith(
-                    image: bestImage([
-                      display.image,
-                      for (final c in copies) c.$2.image,
-                    ]),
-                  );
+                  if ((display.images?.length ?? 0) <= 1) {
+                    final best = bestImage([
+                      display.images?.firstOrNull,
+                      for (final c in copies) c.$2.images?.firstOrNull,
+                    ]);
+                    display = display.copyWith(
+                      images: best == null ? null : [best],
+                    );
+                  }
                   if (actingMissing && _overrides[key] == null) {
                     display = withoutActorVotes(display);
                   }
@@ -1005,9 +1005,9 @@ class _CombinedFeedScreenState extends State<CombinedFeedScreen> {
                                   child: Text(
                                     '${acting.split('@').last} → '
                                     '${shown.split('@').last}',
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.bodySmall,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall,
                                   ),
                                 ),
                               for (final c in copies)

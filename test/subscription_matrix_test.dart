@@ -35,6 +35,8 @@ void main() {
       'a@one.example': {'cats@one.example'},
       'b@two.example': <String>{},
     });
+    // Separate statements read as steps of the scenario.
+    // ignore: cascade_invocations
     m.set('b@two.example', 'cats@one.example', true);
     expect(m.missingTotal, 0);
     m.set('a@one.example', 'cats@one.example', false);

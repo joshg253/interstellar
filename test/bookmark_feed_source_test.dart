@@ -66,9 +66,8 @@ ServerClient _client(
 void main() {
   test('the bookmarks source lists bookmarks, not upvoted items', () async {
     final paths = <String>[];
-    final list = await APIThreads(
-      _client(paths),
-    ).list(FeedSource.favorited, combined: true);
+    final list = await APIThreads(_client(paths))
+        .list(FeedSource.favorited, combined: true);
 
     expect(paths, ['/api/bookmark-lists/show']);
     expect(list.items.map((p) => p.type), [
@@ -79,9 +78,8 @@ void main() {
 
   test('each feed view keeps only its own kind of bookmark', () async {
     final threads = await APIThreads(_client([])).list(FeedSource.favorited);
-    final posts = await MbinAPIMicroblogs(
-      _client([]),
-    ).list(FeedSource.favorited);
+    final posts = await MbinAPIMicroblogs(_client([]))
+        .list(FeedSource.favorited);
 
     expect(threads.items.map((p) => p.type), [PostType.thread]);
     expect(posts.items.map((p) => p.type), [PostType.microblog]);
@@ -91,16 +89,13 @@ void main() {
     'the feed sort picks the order of the bookmarks, as the server knows it',
     () async {
       final queries = <Map<String, String>>[];
-      await APIThreads(
-        _client([], queries),
-      ).list(FeedSource.favorited, sort: FeedSort.oldest);
-      await MbinAPIMicroblogs(
-        _client([], queries),
-      ).list(FeedSource.favorited, sort: FeedSort.top);
+      await APIThreads(_client([], queries))
+          .list(FeedSource.favorited, sort: FeedSort.oldest);
+      await MbinAPIMicroblogs(_client([], queries))
+          .list(FeedSource.favorited, sort: FeedSort.top);
       // Mbin lists bookmarks only by newest, oldest, top and hot.
-      await APIThreads(
-        _client([], queries),
-      ).list(FeedSource.favorited, sort: FeedSort.commented);
+      await APIThreads(_client([], queries))
+          .list(FeedSource.favorited, sort: FeedSort.commented);
 
       expect(queries.map((q) => q['sort']), ['oldest', 'top', 'newest']);
     },

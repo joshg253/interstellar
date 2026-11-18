@@ -9,7 +9,7 @@ import 'package:interstellar/src/widgets/avatar.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 class CommunityPicker extends StatefulWidget {
-  const CommunityPicker({
+  const new({
     required this.value,
     required this.onChange,
     this.microblogMode = false,

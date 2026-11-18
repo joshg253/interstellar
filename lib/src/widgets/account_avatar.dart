@@ -35,7 +35,7 @@ class AccountAvatars {
 /// A small avatar for one of the user's accounts: their picture when signed
 /// in, otherwise the first letter of the server.
 class AccountAvatar extends StatefulWidget {
-  const AccountAvatar(this.account, {this.radius = 12, super.key});
+  const new(this.account, {this.radius = 12, super.key});
 
   final String account;
   final double radius;

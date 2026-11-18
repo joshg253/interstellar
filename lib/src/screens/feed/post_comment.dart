@@ -21,7 +21,7 @@ import 'package:provider/provider.dart';
 import 'package:simplytranslate/simplytranslate.dart';
 
 class PostComment extends StatefulWidget {
-  const PostComment(
+  const new(
     this.comment,
     this.onUpdate, {
     this.opUserId,
@@ -100,7 +100,7 @@ class _PostCommentState extends State<PostComment> {
     final contentItem = ContentItem(
       originInstance: getNameHost(context, widget.comment.user.name),
       id: widget.comment.id,
-      image: widget.comment.image,
+      images: widget.comment.image == null ? null : [widget.comment.image!],
       body: widget.comment.body ?? '_${l(context).commentDeleted}_',
       translation: _translation,
       lang: widget.comment.lang,
@@ -432,9 +432,7 @@ class _PostCommentState extends State<PostComment> {
                 decoration: BoxDecoration(
                   border: Border(
                     left: BorderSide(
-                      color:
-                          Colors.primaries[widget
-                              .level], //Theme.of(context).colorScheme.outlineVariant,
+                      color: Colors.primaries[widget.level], //Theme.of(context).colorScheme.outlineVariant,
                       width: 2,
                     ),
                   ),

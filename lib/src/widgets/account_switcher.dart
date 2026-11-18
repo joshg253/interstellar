@@ -9,7 +9,7 @@ import 'package:provider/provider.dart';
 /// app's selected account. A badge shows unread notifications of the other
 /// accounts when [unread] is given.
 class AccountSwitcher extends StatelessWidget {
-  const AccountSwitcher({
+  const new({
     this.accounts,
     this.unread = const {},
     this.onSwitched,

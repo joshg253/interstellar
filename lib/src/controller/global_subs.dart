@@ -7,7 +7,7 @@ import 'package:interstellar/src/utils/subscription_matrix.dart';
 
 /// One account's subscriptions as last fetched from its server.
 class AccountSnapshot {
-  const AccountSnapshot(this.subs, this.updated);
+  const new(this.subs, this.updated);
 
   final Set<String> subs;
   final DateTime updated;
@@ -25,7 +25,7 @@ abstract class SubsStore {
 }
 
 class FileSubsStore implements SubsStore {
-  FileSubsStore(this.file);
+  new(this.file);
 
   final Future<File> Function() file;
 
@@ -53,20 +53,18 @@ class FileSubsStore implements SubsStore {
 
 /// Fetches an account's subscriptions. Stops and returns null when
 /// [cancelled] turns true.
-typedef SubsFetcher =
-    Future<Set<String>?> Function(
-      String account,
-      SubsKind kind,
-      bool Function() cancelled,
-    );
+typedef SubsFetcher = Future<Set<String>?> Function(
+  String account,
+  SubsKind kind,
+  bool Function() cancelled,
+);
 
-typedef SubsApplier =
-    Future<void> Function(
-      String account,
-      SubsKind kind,
-      String name,
-      bool state,
-    );
+typedef SubsApplier = Future<void> Function(
+  String account,
+  SubsKind kind,
+  String name,
+  bool state,
+);
 
 /// Seconds a server asked us to wait, from an error message that says
 /// `retry after Ns`.
@@ -88,7 +86,7 @@ Set<String> _minus(Set<String> from, Set<String> other) {
 /// Keeps every account's subscriptions cached on the device and runs the long
 /// jobs (fetching, subscribing) in the background: the screen only watches.
 class GlobalSubsController extends ChangeNotifier {
-  GlobalSubsController({
+  new({
     required this.store,
     required this.fetch,
     required this.apply,

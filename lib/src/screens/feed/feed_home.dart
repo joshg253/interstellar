@@ -11,11 +11,7 @@ import 'package:provider/provider.dart';
 /// ticked. Sources and accounts are both chosen in its filter sheet.
 @RoutePage()
 class FeedHomeScreen extends StatefulWidget {
-  const FeedHomeScreen({
-    super.key,
-    this.placeholder = false,
-    this.scrollController,
-  });
+  const new({super.key, this.placeholder = false, this.scrollController});
 
   // This is so the generated route includes parameters so that a key can be
   // passed (same trick as the inbox screen).

@@ -138,8 +138,8 @@ void main() {
         ),
         'social.example.com',
       );
-      expect(post.image?.src, 'https://cdn.example.com/m.jpeg');
-      expect(post.image?.altText, 'a cat');
+      expect(post.images?.firstOrNull?.src, 'https://cdn.example.com/m.jpeg');
+      expect(post.images?.firstOrNull?.altText, 'a cat');
     });
   });
 

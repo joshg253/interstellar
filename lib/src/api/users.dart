@@ -1,5 +1,3 @@
-import 'package:http/http.dart' as http;
-import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:interstellar/src/api/client.dart';
 import 'package:interstellar/src/api/community.dart';
@@ -9,11 +7,9 @@ import 'package:interstellar/src/models/user.dart';
 import 'package:interstellar/src/screens/explore/explore_screen.dart';
 import 'package:interstellar/src/utils/models.dart';
 import 'package:interstellar/src/utils/utils.dart';
-import 'package:mime/mime.dart';
-import 'package:path/path.dart';
 
 class APIUsers {
-  APIUsers(this.client);
+  new(this.client);
 
   final ServerClient client;
 

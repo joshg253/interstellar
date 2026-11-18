@@ -2,22 +2,22 @@ import 'package:interstellar/src/models/post.dart';
 
 /// Something a link to a fediverse server points at that the app can open.
 sealed class InAppLink {
-  const InAppLink();
+  const new();
 }
 
 class CommunityLink extends InAppLink {
   /// `name` on the account's own server, `name@host` elsewhere.
-  const CommunityLink(this.name);
+  const new(this.name);
   final String name;
 }
 
 class UserLink extends InAppLink {
-  const UserLink(this.name);
+  const new(this.name);
   final String name;
 }
 
 class PostLink extends InAppLink {
-  const PostLink(this.id, this.type, {required this.local});
+  const new(this.id, this.type, {required this.local});
   final int id;
   final PostType type;
 
@@ -27,7 +27,7 @@ class PostLink extends InAppLink {
 }
 
 class CommentLink extends InAppLink {
-  const CommentLink(this.id, this.type, {required this.local});
+  const new(this.id, this.type, {required this.local});
   final int id;
   final PostType type;
   final bool local;

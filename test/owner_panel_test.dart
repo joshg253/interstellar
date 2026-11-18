@@ -12,7 +12,7 @@ import 'package:material_symbols_icons/symbols.dart';
 import 'package:provider/provider.dart';
 
 class _FakeController extends Fake implements AppController {
-  _FakeController(ServerSoftware software)
+  new(ServerSoftware software)
     : api = API(
         ServerClient(
           httpClient: MockClient((_) async => throw UnimplementedError()),

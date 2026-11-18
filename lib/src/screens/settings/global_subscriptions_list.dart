@@ -12,7 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 /// edit. Accounts are made to match it from the main screen.
 @RoutePage()
 class GlobalSubscriptionsListScreen extends StatefulWidget {
-  const GlobalSubscriptionsListScreen({super.key});
+  const new({super.key});
 
   @override
   State<GlobalSubscriptionsListScreen> createState() =>
@@ -440,9 +440,8 @@ class _GlobalSubscriptionsListScreenState
                         OutlinedButton(
                           onPressed: () => _review(subs),
                           child: Text(
-                            l(
-                              context,
-                            ).globalSubs_reviewFailing(subs.problems.length),
+                            l(context)
+                                .globalSubs_reviewFailing(subs.problems.length),
                           ),
                         ),
                       OutlinedButton(
@@ -457,9 +456,8 @@ class _GlobalSubscriptionsListScreenState
                     ListTile(
                       dense: true,
                       title: Text(
-                        l(
-                          context,
-                        ).globalSubs_checking(_checkDone!, _checkTotal),
+                        l(context)
+                            .globalSubs_checking(_checkDone!, _checkTotal),
                       ),
                       subtitle: LinearProgressIndicator(
                         value: _checkTotal == 0
@@ -501,6 +499,8 @@ class _GlobalSubscriptionsListScreenState
                       controller: _tabs,
                       children: [
                         for (final kind in SubsKind.values)
+                          // A list-only ternary reads better than if/else elements here.
+                          // ignore: prefer_if_elements_to_conditional_expressions
                           subs.master[kind] == null
                               ? Center(
                                   child: Padding(
@@ -541,12 +541,10 @@ class _GlobalSubscriptionsListScreenState
                                                           in shown[kind]!)
                                                         (kind, n),
                                                     })
-                                                    ? l(
-                                                        context,
-                                                      ).globalSubs_selectNone
-                                                    : l(
-                                                        context,
-                                                      ).globalSubs_selectAll,
+                                                    ? l(context)
+                                                          .globalSubs_selectNone
+                                                    : l(context)
+                                                          .globalSubs_selectAll,
                                               ),
                                             ),
                                     ),

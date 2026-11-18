@@ -134,7 +134,7 @@ String globalSubsWhen(DateTime t) => t.toLocal().toString().substring(0, 16);
 /// Status of the cached subscriptions and the jobs that fill them.
 @RoutePage()
 class GlobalSubscriptionsScreen extends StatefulWidget {
-  const GlobalSubscriptionsScreen({super.key});
+  const new({super.key});
 
   @override
   State<GlobalSubscriptionsScreen> createState() =>
@@ -153,9 +153,8 @@ class _GlobalSubscriptionsScreenState extends State<GlobalSubscriptionsScreen> {
   String _info(BuildContext context, GlobalSubsController subs, String a) {
     final paused = subs.pausedUntil[a];
     if (paused != null && paused.isAfter(DateTime.now())) {
-      return l(
-        context,
-      ).globalSubs_waiting(globalSubsWhen(paused).substring(11));
+      return l(context)
+          .globalSubs_waiting(globalSubsWhen(paused).substring(11));
     }
     final c = subs.snapshots[SubsKind.communities]![a];
     final cb = subs.snapshots[SubsKind.communityBlocks]![a];

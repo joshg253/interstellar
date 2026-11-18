@@ -197,7 +197,7 @@ int Function(PostModel, PostModel) postSortFunction(
 }
 
 class FeedInputState {
-  FeedInputState({
+  new({
     required this.title,
     required this.source,
     required this.sourceId,
@@ -278,9 +278,9 @@ class FeedInputState {
 }
 
 class FeedAggregator {
-  const FeedAggregator({required this.name, required this.inputs});
+  const new({required this.name, required this.inputs});
 
-  factory FeedAggregator.fromSingleSource({
+  factory fromSingleSource({
     required String name,
     required FeedSource source,
     String? sourceId,

@@ -1078,7 +1078,7 @@ void cacheTests() {
     await c.load();
     await c.fetchAccounts([a], kinds: [SubsKind.communities]);
     await c.rebuildMaster(SubsKind.communities);
-    await c.editMaster(SubsKind.communityBlocks, remove: const <String>[]);
+    await c.editMaster(SubsKind.communityBlocks);
     expect(c.master[SubsKind.communityBlocks], isNull);
   });
 }

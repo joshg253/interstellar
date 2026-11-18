@@ -49,7 +49,7 @@ Map<String, dynamic> _status(
 };
 
 class _Rig {
-  _Rig(Map<String, Map<String, dynamic>> routes) {
+  new(Map<String, Map<String, dynamic>> routes) {
     api = API(
       ServerClient(
         httpClient: MockClient((request) async {

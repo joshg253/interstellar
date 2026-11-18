@@ -1,5 +1,3 @@
-import 'package:http/http.dart' as http;
-import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:interstellar/src/api/bookmark.dart';
 import 'package:interstellar/src/api/client.dart';
@@ -10,7 +8,7 @@ import 'package:interstellar/src/models/post.dart';
 import 'package:interstellar/src/utils/utils.dart';
 
 class MbinAPIMicroblogs {
-  MbinAPIMicroblogs(this.client);
+  new(this.client);
 
   final ServerClient client;
 
@@ -21,9 +19,8 @@ class MbinAPIMicroblogs {
     FeedSort? sort,
   }) async {
     if (source == FeedSource.favorited) {
-      return APIBookmark(
-        client,
-      ).feedPage(page: page, sort: sort, type: PostType.microblog);
+      return APIBookmark(client)
+          .feedPage(page: page, sort: sort, type: PostType.microblog);
     }
     if (client.software == ServerSoftware.mastodon) {
       return MastodonAPI(client).timeline(source, page: page);
@@ -134,9 +131,8 @@ class MbinAPIMicroblogs {
   }) async {
     if (client.software == ServerSoftware.mastodon) {
       return mastodonPost(
-        await MastodonAPI(
-          client,
-        ).createStatus(body, lang: lang, sensitive: isAdult),
+        await MastodonAPI(client)
+            .createStatus(body, lang: lang, sensitive: isAdult),
         client.domain,
       );
     }

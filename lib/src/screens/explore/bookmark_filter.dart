@@ -10,7 +10,7 @@ enum BookmarkSort {
   top('top'),
   hot('hot');
 
-  const BookmarkSort(this.mbinValue);
+  new(this.mbinValue);
 
   final String mbinValue;
 }
@@ -22,7 +22,7 @@ enum BookmarkNsfw { any, hide, only }
 /// Narrows the bookmarks loaded so far. Comments have no NSFW flag, so they
 /// pass "hide" and are left out by "only".
 class BookmarkFilter {
-  const BookmarkFilter({
+  const new({
     this.kind = BookmarkKind.all,
     this.nsfw = BookmarkNsfw.any,
     this.query = '',
@@ -51,13 +51,13 @@ class BookmarkFilter {
 
   bool matches(Object item) {
     final parsed = switch (item) {
-      PostModel p => (
+      final PostModel p => (
         p.type == PostType.thread ? BookmarkKind.threads : BookmarkKind.posts,
         p.isNSFW,
         p.title,
         p.body,
       ),
-      CommentModel c => (BookmarkKind.comments, false, null, c.body),
+      final CommentModel c => (BookmarkKind.comments, false, null, c.body),
       _ => null,
     };
 

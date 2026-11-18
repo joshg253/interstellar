@@ -6,8 +6,12 @@ import 'package:markdown/markdown.dart' as md;
 class VideoMarkdownSyntax extends md.InlineSyntax {
   // The marker is what makes it a video, so the address needs no extension
   // (media proxies have none).
-  VideoMarkdownSyntax()
-    : super(r'!\[video\/mp4\]\((https:\/\/[^\s)]+)\)', caseSensitive: false);
+  new()
+    : super(
+        r'!\[video\/mp4\]\((https:\/\/[^\s)]+)\)',
+        caseSensitive: false,
+        startCharacter: '!'.codeUnitAt(0),
+      );
 
   @override
   bool onMatch(md.InlineParser parser, Match match) {
@@ -17,7 +21,7 @@ class VideoMarkdownSyntax extends md.InlineSyntax {
 }
 
 class YoutubeEmbedSyntax extends md.InlineSyntax {
-  YoutubeEmbedSyntax() : super(_youtubePattern);
+  new() : super(_youtubePattern);
 
   //from here https://stackoverflow.com/a/61033353
   static const _youtubePattern =
@@ -86,7 +90,7 @@ class YoutubeEmbedSyntax extends md.InlineSyntax {
 }
 
 class VideoMarkdownBuilder extends mdf.MarkdownElementBuilder {
-  VideoMarkdownBuilder({this.enableBlur = false});
+  new({this.enableBlur = false});
 
   final bool enableBlur;
 

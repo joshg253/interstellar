@@ -236,8 +236,9 @@ void gifHostTests() {
         String? auth;
         final client = MockClient((r) async {
           seen.add(r.url.path);
-          if (r.url.path == '/v2/auth/temporary')
+          if (r.url.path == '/v2/auth/temporary') {
             return _json({'token': 't0k'});
+          }
           auth = r.headers['Authorization'];
           return _json({
             'gif': {

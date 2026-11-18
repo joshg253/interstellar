@@ -46,7 +46,7 @@ class ConfigShareMarkdownSyntax extends md.BlockSyntax {
 }
 
 class ConfigShareMarkdownBuilder extends mdf.MarkdownElementBuilder {
-  ConfigShareMarkdownBuilder();
+  new();
 
   @override
   Widget? visitElementAfter(md.Element element, TextStyle? preferredStyle) {
@@ -55,7 +55,7 @@ class ConfigShareMarkdownBuilder extends mdf.MarkdownElementBuilder {
 }
 
 class ConfigShareWidget extends StatefulWidget {
-  const ConfigShareWidget({required this.text, super.key});
+  const new({required this.text, super.key});
 
   final String text;
 
@@ -70,7 +70,7 @@ class _ConfigShareWidgetState extends State<ConfigShareWidget> {
   FilterList? configFilterList;
   Feed? configFeed;
 
-  bool invalid = false;
+  String? error;
 
   @override
   void initState() {
@@ -80,7 +80,7 @@ class _ConfigShareWidgetState extends State<ConfigShareWidget> {
       config = ConfigShare.fromJson(jsonDecode(widget.text));
       if (!config.verifyHash(widget.text)) {
         setState(() {
-          invalid = true;
+          error = 'Hash verification failed';
         });
         return;
       }
@@ -99,9 +99,9 @@ class _ConfigShareWidgetState extends State<ConfigShareWidget> {
           configFeed = Feed.fromJson(config.payload);
       }
       setState(() {});
-    } catch (_) {
+    } catch (e) {
       setState(() {
-        invalid = true;
+        error = e.toString();
       });
     }
   }
@@ -113,8 +113,13 @@ class _ConfigShareWidgetState extends State<ConfigShareWidget> {
       margin: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.all(12),
-        child: invalid
-            ? const Center(child: Icon(Symbols.warning_rounded))
+        child: error != null
+            ? Center(
+                child: Tooltip(
+                  message: error,
+                  child: const Icon(Symbols.warning_rounded),
+                ),
+              )
             : Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
