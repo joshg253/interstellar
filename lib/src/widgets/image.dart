@@ -7,6 +7,7 @@ import 'package:flutter_blurhash/flutter_blurhash.dart';
 import 'package:interstellar/src/controller/controller.dart';
 import 'package:interstellar/src/controller/router.gr.dart';
 import 'package:interstellar/src/models/image.dart';
+import 'package:interstellar/src/utils/file_names.dart';
 import 'package:interstellar/src/utils/share.dart';
 import 'package:interstellar/src/utils/utils.dart';
 import 'package:interstellar/src/widgets/blur.dart';
@@ -163,7 +164,7 @@ class _AdvancedImagePageState extends State<AdvancedImagePage> {
               await downloadFile(
                 context,
                 Uri.parse(widget.image.src),
-                widget.image.src.split('/').last,
+                imageFileName(widget.image.src),
                 defaultDir: context.read<AppController>().defaultDownloadDir,
               );
             },
@@ -171,7 +172,7 @@ class _AdvancedImagePageState extends State<AdvancedImagePage> {
               await downloadFile(
                 context,
                 Uri.parse(widget.image.src),
-                widget.image.src.split('/').last,
+                imageFileName(widget.image.src),
               );
             },
             icon: const Icon(Symbols.download_rounded),
@@ -180,7 +181,7 @@ class _AdvancedImagePageState extends State<AdvancedImagePage> {
             LoadingIconButton(
               onPressed: () async => shareFile(
                 Uri.parse(widget.image.src),
-                widget.image.src.split('/').last,
+                imageFileName(widget.image.src),
               ),
               icon: const Icon(Symbols.share_rounded),
             ),
